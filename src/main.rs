@@ -206,7 +206,7 @@ fn run_synth(
                             println!("Message: {:0X?}", message);
                             let input = {
                                 let mut input = input.lock().unwrap();
-                                update_input(std::ops::DerefMut::deref_mut(&mut input), &message);
+                                update_input(&mut *input, &message);
                                 (&*input).clone()
                             };
                             update_led(&input, &mut midi_out).expect("update_led failed")
