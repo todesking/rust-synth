@@ -35,11 +35,17 @@ define_rack! {
 }
 
 fn main() -> Result<()> {
-    run_synth()?;
+    let midi_out_con = setup_midi_output_connection()?;
+    let midi_in = setup_midi_input()?;
+
+    let cpal_device = setup_cpal_device()?;
+    let cpal_config = setup_cpal_config(&cpal_device)?;
+
+    run_synth(midi_in, midi_out_con, cpal_device, cpal_config)?;
     Ok(())
 }
 
-fn list_available_ports<T: midir::MidiIO>(io: &T, kind: &str) -> Result<()> {
+fn list_available_midi_ports<T: midir::MidiIO>(io: &T, kind: &str) -> Result<()> {
     println!("Available {} ports:", kind);
     for port in io.ports() {
         println!("* {}", io.port_name(&port)?);
@@ -47,18 +53,24 @@ fn list_available_ports<T: midir::MidiIO>(io: &T, kind: &str) -> Result<()> {
     Ok(())
 }
 
-fn run_synth() -> Result<()> {
+fn setup_midi_output_connection() -> Result<midir::MidiOutputConnection> {
     let output = midir::MidiOutput::new("midir")?;
-    list_available_ports(&output, "output")?;
+    list_available_midi_ports(&output, "output")?;
     let port = &output.ports()[0];
     let port_name = output.port_name(port)?;
     let out_con = output.connect(port, &port_name).map_err(SyncError::new)?;
     println!("Using device {}", port_name);
+    Ok(out_con)
+}
 
+fn setup_midi_input() -> Result<midir::MidiInput> {
     let mut input = midir::MidiInput::new("midi_input")?;
-    list_available_ports(&input, "input")?;
+    list_available_midi_ports(&input, "input")?;
     input.ignore(midir::Ignore::None);
+    Ok(input)
+}
 
+fn setup_cpal_device() -> Result<cpal::Device> {
     let host = cpal::default_host();
     println!("Avaliable devices:");
     for device in host.output_devices()? {
@@ -69,12 +81,15 @@ fn run_synth() -> Result<()> {
         .default_output_device()
         .context("Default output device not found")?;
     println!("Using device {}", device.name()?);
+    Ok(device)
+}
 
+fn setup_cpal_config(cpal_device: &cpal::Device) -> Result<cpal::StreamConfig> {
     println!("Available output config:");
-    for config in device.supported_output_configs()? {
+    for config in cpal_device.supported_output_configs()? {
         println!("* {:?}", config);
     }
-    let output_available = device.supported_output_configs()?.any(|c| {
+    let output_available = cpal_device.supported_output_configs()?.any(|c| {
         c.sample_format() == cpal::SampleFormat::F32
             && c.channels() == 2
             && c.min_sample_rate() <= cpal::SampleRate(44_100)
@@ -87,14 +102,12 @@ fn run_synth() -> Result<()> {
     if !output_available {
         panic!("No suitable output available")
     }
-    let config = cpal::StreamConfig {
+    let cpal_config = cpal::StreamConfig {
         channels: 2,
         sample_rate: cpal::SampleRate(44_100),
         buffer_size: cpal::BufferSize::Fixed(441),
     };
-
-    run_synth_main(input, out_con, device, config)?;
-    Ok(())
+    Ok(cpal_config)
 }
 
 fn update_input(input: &mut Input, message: &MidiMessage) {
@@ -166,7 +179,7 @@ fn update_led(input: &Input, midi_out: &mut midir::MidiOutputConnection) -> Resu
     Ok(())
 }
 
-fn run_synth_main(
+fn run_synth(
     midi_in: midir::MidiInput,
     mut midi_out: midir::MidiOutputConnection,
     device: cpal::Device,
