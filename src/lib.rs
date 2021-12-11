@@ -1,6 +1,6 @@
+pub mod midi_message;
 pub mod nanokontrol2;
 
-use std::cell::RefCell;
 use std::marker::PhantomData;
 
 pub trait Rack {
