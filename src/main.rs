@@ -1,7 +1,37 @@
 use anyhow::Context;
 use anyhow::Result;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+
+use rustsynth::define_rack;
 use rustsynth::midi_message::MidiMessage;
+use rustsynth::WaveForm;
+use rustsynth::VCO;
+
+#[derive(Default, Debug, Clone)]
+pub struct Input {
+    pub vco1_freq: f32,
+    pub vco1_waveform: WaveForm,
+    pub lfo1_freq: f32,
+    pub lfo1_waveform: WaveForm,
+    pub vco1_lfo1_amount: f32,
+}
+
+define_rack! {
+    MyRack: Rack<Input> {
+        lfo1: VCO {
+            in_freq: Box::new(|_, input| input.lfo1_freq),
+            in_waveform: Box::new(|_, input| input.lfo1_waveform ),
+            freq_min: 0.1,
+            freq_max: 100.0,
+        },
+        vco1: VCO {
+            in_freq: Box::new(|rack, input| rack.lfo1.borrow().out * input.vco1_lfo1_amount + input.vco1_freq ),
+            in_waveform: Box::new(|_, input| input.vco1_waveform ),
+            freq_min: 100.0,
+            freq_max: 15000.0,
+        },
+    }
+}
 
 fn main() -> Result<()> {
     run_synth()?;
@@ -53,8 +83,7 @@ fn run_synth() -> Result<()> {
     Ok(())
 }
 
-fn update_input(input: &mut rustsynth::Input, message: &MidiMessage) {
-    use rustsynth::WaveForm;
+fn update_input(input: &mut Input, message: &MidiMessage) {
     if let MidiMessage::ControlChange { ch: 0, num, value } = message {
         let value = *value as f32 / 127.0;
         match num {
@@ -99,8 +128,7 @@ fn set_led(midi_out: &mut midir::MidiOutputConnection, num: u8, on: bool) -> Res
     Ok(())
 }
 
-fn update_led(input: &rustsynth::Input, midi_out: &mut midir::MidiOutputConnection) -> Result<()> {
-    use rustsynth::WaveForm;
+fn update_led(input: &Input, midi_out: &mut midir::MidiOutputConnection) -> Result<()> {
     let led_group_0 = [0x20, 0x30, 0x40];
     let led_group_0_lit = match input.lfo1_waveform {
         WaveForm::Sine | WaveForm::Triangle => 0x20,
@@ -128,7 +156,7 @@ fn run_synth_main(
     midi_in: midir::MidiInput,
     mut midi_out: midir::MidiOutputConnection,
 ) -> Result<()> {
-    let input = std::sync::Arc::new(std::sync::Mutex::new(rustsynth::Input {
+    let input = std::sync::Arc::new(std::sync::Mutex::new(Input {
         ..Default::default()
     }));
     update_led(&*input.lock().unwrap(), &mut midi_out)?;
@@ -195,7 +223,7 @@ fn run_synth_main(
         sample_rate: cpal::SampleRate(44_100),
         buffer_size: cpal::BufferSize::Fixed(441),
     };
-    let rack = rustsynth::MyRack::new();
+    let rack = MyRack::new();
     let stream = device.build_output_stream(
         &config,
         {

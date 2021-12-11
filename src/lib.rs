@@ -16,13 +16,13 @@ pub trait InPort<R: Rack, T>: Fn(&R, &R::Input) -> T + std::marker::Send {}
 impl<R: Rack, T, F: Fn(&R, &R::Input) -> T + std::marker::Send> InPort<R, T> for F {}
 
 pub struct VCO<R: Rack> {
-    _rack: PhantomData<R>,
+    pub _rack: PhantomData<R>,
     // range: 0.0 - 1.0 ( freq_min Hz - freq_max Hz )
-    in_freq: Box<dyn InPort<R, f32>>,
-    in_waveform: Box<dyn InPort<R, WaveForm>>,
-    phase: f32,
-    freq_min: f32,
-    freq_max: f32,
+    pub in_freq: Box<dyn InPort<R, f32>>,
+    pub in_waveform: Box<dyn InPort<R, WaveForm>>,
+    pub phase: f32,
+    pub freq_min: f32,
+    pub freq_max: f32,
     pub out: f32,
 }
 impl<R: Rack> Default for VCO<R> {
@@ -91,15 +91,7 @@ impl Default for WaveForm {
     }
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct Input {
-    pub vco1_freq: f32,
-    pub vco1_waveform: WaveForm,
-    pub lfo1_freq: f32,
-    pub lfo1_waveform: WaveForm,
-    pub vco1_lfo1_amount: f32,
-}
-
+#[macro_export]
 macro_rules! define_rack {
     ($rack_name:ident : Rack<$input:ident> {$(
         $mod_name:ident : $mod_type:ident {$(
@@ -107,44 +99,28 @@ macro_rules! define_rack {
         ),*$(,)?}
     ),*$(,)?}) => {
         pub struct $rack_name {
-            $(pub $mod_name: std::cell::RefCell<$mod_type<$rack_name>> ),*
+            $(pub $mod_name: ::std::cell::RefCell<$mod_type<$rack_name>> ),*
         }
         impl $rack_name {
             pub fn new() -> $rack_name {
                 $rack_name {
-                    $($mod_name: std::cell::RefCell::new(
+                    $($mod_name: ::std::cell::RefCell::new(
                         $mod_type {
                             $($field_name: $field_value),*
-                            ,..std::default::Default::default()
+                            ,..::std::default::Default::default()
                         }
                     )),*
                 }
             }
             pub fn update(&self, input: &$input) {
-                $(
-                    self.$mod_name.borrow_mut().update(self, input);
-                )*
+                $({
+                    let mut module = ::std::cell::RefCell::borrow_mut(&self.$mod_name);
+                    ::rustsynth::Module::update(&mut *module, self, input);
+                })*
             }
         }
-        impl Rack for $rack_name {
+        impl ::rustsynth::Rack for $rack_name {
             type Input = $input;
         }
     };
-}
-
-define_rack! {
-    MyRack: Rack<Input> {
-        lfo1: VCO {
-            in_freq: Box::new(|_, input| input.lfo1_freq),
-            in_waveform: Box::new(|_, input| input.lfo1_waveform ),
-            freq_min: 0.1,
-            freq_max: 100.0,
-        },
-        vco1: VCO {
-            in_freq: Box::new(|rack, input| rack.lfo1.borrow().out * input.vco1_lfo1_amount + input.vco1_freq ),
-            in_waveform: Box::new(|_, input| input.vco1_waveform ),
-            freq_min: 100.0,
-            freq_max: 15000.0,
-        },
-    }
 }
