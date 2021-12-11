@@ -1,5 +1,6 @@
 pub mod midi_message;
 pub mod nanokontrol2;
+pub mod util;
 
 use std::marker::PhantomData;
 

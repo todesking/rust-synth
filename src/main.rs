@@ -4,6 +4,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use rustsynth::define_rack;
 use rustsynth::midi_message::MidiMessage;
+use rustsynth::util::SyncError;
 use rustsynth::WaveForm;
 use rustsynth::VCO;
 
@@ -38,28 +39,6 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug)]
-struct SyncError<T: std::error::Error>(std::sync::Mutex<T>);
-impl<T: std::error::Error> SyncError<T> {
-    fn new(value: T) -> SyncError<T> {
-        SyncError(std::sync::Mutex::new(value))
-    }
-}
-impl<T: std::error::Error + std::fmt::Display> std::fmt::Display for SyncError<T> {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-        match self.0.lock() {
-            Ok(value) => {
-                value.fmt(fmt)?;
-            }
-            Err(err) => {
-                panic!("Can't acquire lock: {}", err);
-            }
-        }
-        Ok(())
-    }
-}
-impl<T: std::error::Error> std::error::Error for SyncError<T> {}
-
 fn list_available_ports<T: midir::MidiIO>(io: &T, kind: &str) -> Result<()> {
     println!("Available {} ports:", kind);
     for port in io.ports() {
@@ -79,7 +58,42 @@ fn run_synth() -> Result<()> {
     let mut input = midir::MidiInput::new("midi_input")?;
     list_available_ports(&input, "input")?;
     input.ignore(midir::Ignore::None);
-    run_synth_main(input, out_con)?;
+
+    let host = cpal::default_host();
+    println!("Avaliable devices:");
+    for device in host.output_devices()? {
+        println!("* {}", device.name()?);
+    }
+
+    let device = host
+        .default_output_device()
+        .context("Default output device not found")?;
+    println!("Using device {}", device.name()?);
+
+    println!("Available output config:");
+    for config in device.supported_output_configs()? {
+        println!("* {:?}", config);
+    }
+    let output_available = device.supported_output_configs()?.any(|c| {
+        c.sample_format() == cpal::SampleFormat::F32
+            && c.channels() == 2
+            && c.min_sample_rate() <= cpal::SampleRate(44_100)
+            && c.max_sample_rate() >= cpal::SampleRate(44_100)
+            && match c.buffer_size() {
+                cpal::SupportedBufferSize::Range { min, max } => min <= &441 && &441 <= max,
+                _ => false,
+            }
+    });
+    if !output_available {
+        panic!("No suitable output available")
+    }
+    let config = cpal::StreamConfig {
+        channels: 2,
+        sample_rate: cpal::SampleRate(44_100),
+        buffer_size: cpal::BufferSize::Fixed(441),
+    };
+
+    run_synth_main(input, out_con, device, config)?;
     Ok(())
 }
 
@@ -155,6 +169,8 @@ fn update_led(input: &Input, midi_out: &mut midir::MidiOutputConnection) -> Resu
 fn run_synth_main(
     midi_in: midir::MidiInput,
     mut midi_out: midir::MidiOutputConnection,
+    device: cpal::Device,
+    config: cpal::StreamConfig,
 ) -> Result<()> {
     let input = std::sync::Arc::new(std::sync::Mutex::new(Input {
         ..Default::default()
@@ -190,39 +206,6 @@ fn run_synth_main(
         )
         .map_err(SyncError::new)?;
 
-    let host = cpal::default_host();
-    println!("Avaliable devices:");
-    for device in host.output_devices()? {
-        println!("* {}", device.name()?);
-    }
-
-    let device = host
-        .default_output_device()
-        .context("Default output device not found")?;
-    println!("Using device {}", device.name()?);
-
-    println!("Available output config:");
-    for config in device.supported_output_configs()? {
-        println!("* {:?}", config);
-    }
-    let output_available = device.supported_output_configs()?.any(|c| {
-        c.sample_format() == cpal::SampleFormat::F32
-            && c.channels() == 2
-            && c.min_sample_rate() <= cpal::SampleRate(44_100)
-            && c.max_sample_rate() >= cpal::SampleRate(44_100)
-            && match c.buffer_size() {
-                cpal::SupportedBufferSize::Range { min, max } => min <= &441 && &441 <= max,
-                _ => false,
-            }
-    });
-    if !output_available {
-        panic!("No suitable output available")
-    }
-    let config = cpal::StreamConfig {
-        channels: 2,
-        sample_rate: cpal::SampleRate(44_100),
-        buffer_size: cpal::BufferSize::Fixed(441),
-    };
     let rack = MyRack::new();
     let stream = device.build_output_stream(
         &config,
