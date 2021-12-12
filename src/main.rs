@@ -6,7 +6,7 @@ use rustsynth::define_rack;
 use rustsynth::midi_message::MidiMessage;
 use rustsynth::util::SyncError;
 use rustsynth::WaveForm;
-use rustsynth::VCO;
+use rustsynth::{Buf, EG, VCO};
 
 #[derive(Default, Debug, Clone)]
 pub struct Input {
@@ -15,6 +15,11 @@ pub struct Input {
     pub lfo1_freq: f32,
     pub lfo1_waveform: WaveForm,
     pub vco1_lfo1_amount: f32,
+    pub eg1_a: f32,
+    pub eg1_d: f32,
+    pub eg1_s: f32,
+    pub eg1_r: f32,
+    pub eg1_gate: bool,
 }
 
 define_rack! {
@@ -31,6 +36,16 @@ define_rack! {
             freq_min: 100.0,
             freq_max: 15000.0,
         },
+        eg1: EG {
+            in_gate: Box::new(|_, input| input.eg1_gate),
+            in_a: Box::new(|_, input| input.eg1_a),
+            in_d: Box::new(|_, input| input.eg1_d),
+            in_s: Box::new(|_, input| input.eg1_s),
+            in_r: Box::new(|_, input| input.eg1_r),
+        },
+        vca1: Buf {
+            in_value: Box::new(|rack, _| rack.vco1.borrow().out * rack.eg1.borrow().out),
+        }
     }
 }
 
@@ -114,12 +129,25 @@ fn update_input(input: &mut Input, message: &MidiMessage) {
     if let MidiMessage::ControlChange { ch: 0, num, value } = message {
         let value = *value as f32 / 127.0;
         match num {
+            // slider 1
             0x00 => input.lfo1_freq = value,
+            // slider 2
             0x01 => input.vco1_freq = value,
+            // knob 1
             0x10 => input.vco1_lfo1_amount = value,
+            // slider 3
+            0x02 => input.eg1_a = value,
+            // knob 3
+            0x12 => input.eg1_d = value,
+            // slider 4
+            0x03 => input.eg1_s = value,
+            // knob 4
+            0x13 => input.eg1_r = value,
             _ => {
+                // handle buttons
                 if value > 0.5 {
                     match num {
+                        // Solo 1
                         0x20 => {
                             if input.lfo1_waveform == WaveForm::Sine {
                                 input.lfo1_waveform = WaveForm::Triangle;
@@ -127,8 +155,11 @@ fn update_input(input: &mut Input, message: &MidiMessage) {
                                 input.lfo1_waveform = WaveForm::Sine;
                             }
                         }
+                        // Mute 1
                         0x30 => input.lfo1_waveform = WaveForm::Sawtooth,
+                        // Rec 1
                         0x40 => input.lfo1_waveform = WaveForm::Square,
+                        // Solo 2
                         0x21 => {
                             if input.vco1_waveform == WaveForm::Sine {
                                 input.vco1_waveform = WaveForm::Triangle;
@@ -136,8 +167,17 @@ fn update_input(input: &mut Input, message: &MidiMessage) {
                                 input.vco1_waveform = WaveForm::Sine
                             }
                         }
+                        // Mute 2
                         0x31 => input.vco1_waveform = WaveForm::Sawtooth,
+                        // Rec 2
                         0x41 => input.vco1_waveform = WaveForm::Square,
+                        // Rec 3
+                        0x42 => input.eg1_gate = true,
+                        _ => {}
+                    }
+                } else {
+                    match num {
+                        0x42 => input.eg1_gate = false,
                         _ => {}
                     }
                 }
@@ -229,7 +269,7 @@ fn run_synth(
                 let input = &*input;
                 for frame in data.chunks_mut(2) {
                     rack.update(input);
-                    let value = rack.vco1.borrow().out;
+                    let value = rack.vca1.borrow().out;
                     for sample in frame.iter_mut() {
                         *sample = value;
                     }
