@@ -22,7 +22,8 @@ pub struct Input {
     pub eg1_gate: bool,
     pub eg1_repeat: bool,
     pub lpf1_freq: f32,
-    pub lpef1_resonance: f32,
+    pub lpf1_resonance: f32,
+    pub lpf1_lfo1_amount: f32,
 }
 impl Default for Input {
     fn default() -> Self {
@@ -39,7 +40,8 @@ impl Default for Input {
             eg1_gate: false,
             eg1_repeat: false,
             lpf1_freq: 0.1,
-            lpef1_resonance: 0.05,
+            lpf1_resonance: 0.05,
+            lpf1_lfo1_amount: 0.0,
         }
     }
 }
@@ -70,8 +72,8 @@ define_rack! {
             in_value: Box::new(|rack, _| rack.vco1.borrow().out * rack.eg1.borrow().out),
         },
         lpf1: IIRLPF {
-            in_freq: Box::new(|_, input| input.lpf1_freq),
-            in_resonance: Box::new(|_, input| input.lpef1_resonance),
+            in_freq: Box::new(|rack, input| input.lpf1_freq + input.lpf1_lfo1_amount * rack.lfo1.borrow().out),
+            in_resonance: Box::new(|_, input| input.lpf1_resonance),
             in_value: Box::new(|rack, _| rack.vca1.borrow().out),
             freq_min: 100.0,
             freq_max: 20_000.0,
@@ -176,7 +178,9 @@ fn update_input(input: &mut Input, message: &MidiMessage) {
             // slider 5
             0x04 => input.lpf1_freq = value,
             // knob 5
-            0x14 => input.lpef1_resonance = value,
+            0x14 => input.lpf1_resonance = value,
+            // knob 6
+            0x15 => input.lpf1_lfo1_amount = value,
             _ => {
                 // handle buttons
                 if value > 0.5 {
