@@ -46,6 +46,103 @@ impl Default for Input {
     }
 }
 
+fn update_input(input: &mut Input, message: &MidiMessage) {
+    if let MidiMessage::ControlChange { ch: 0, num, value } = message {
+        let value = *value as f32 / 127.0;
+        match num {
+            // slider 1
+            0x00 => input.lfo1_freq = value,
+            // slider 2
+            0x01 => input.vco1_freq = value,
+            // knob 1
+            0x10 => input.vco1_lfo1_amount = value,
+            // slider 3
+            0x02 => input.eg1_a = value,
+            // knob 3
+            0x12 => input.eg1_d = value,
+            // slider 4
+            0x03 => input.eg1_s = value,
+            // knob 4
+            0x13 => input.eg1_r = value,
+            // slider 5
+            0x04 => input.lpf1_freq = value,
+            // knob 5
+            0x14 => input.lpf1_resonance = value,
+            // knob 6
+            0x15 => input.lpf1_lfo1_amount = value,
+            _ => {
+                // handle buttons
+                if value > 0.5 {
+                    match num {
+                        // Solo 1
+                        0x20 => {
+                            if input.lfo1_waveform == WaveForm::Sine {
+                                input.lfo1_waveform = WaveForm::Triangle;
+                            } else {
+                                input.lfo1_waveform = WaveForm::Sine;
+                            }
+                        }
+                        // Mute 1
+                        0x30 => input.lfo1_waveform = WaveForm::Sawtooth,
+                        // Rec 1
+                        0x40 => input.lfo1_waveform = WaveForm::Square,
+                        // Solo 2
+                        0x21 => {
+                            if input.vco1_waveform == WaveForm::Sine {
+                                input.vco1_waveform = WaveForm::Triangle;
+                            } else {
+                                input.vco1_waveform = WaveForm::Sine
+                            }
+                        }
+                        // Mute 2
+                        0x31 => input.vco1_waveform = WaveForm::Sawtooth,
+                        // Rec 2
+                        0x41 => input.vco1_waveform = WaveForm::Square,
+                        // Mute 3
+                        0x32 => input.eg1_repeat = !input.eg1_repeat,
+                        // Rec 3
+                        0x42 => input.eg1_gate = true,
+                        _ => {}
+                    }
+                } else {
+                    #[allow(clippy::single_match)]
+                    match num {
+                        0x42 => input.eg1_gate = false,
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn update_led(input: &Input, midi_out: &mut midir::MidiOutputConnection) -> Result<()> {
+    let led_group_0 = [0x20, 0x30, 0x40];
+    let led_group_0_lit = match input.lfo1_waveform {
+        WaveForm::Sine | WaveForm::Triangle => 0x20,
+        WaveForm::Sawtooth => 0x30,
+        WaveForm::Square => 0x40,
+    };
+    for led in led_group_0 {
+        set_led(midi_out, led, led == led_group_0_lit)?;
+    }
+
+    let led_group_1 = [0x21, 0x31, 0x41];
+    let led_group_1_lit = match input.vco1_waveform {
+        WaveForm::Sine | WaveForm::Triangle => 0x21,
+        WaveForm::Sawtooth => 0x31,
+        WaveForm::Square => 0x41,
+    };
+    for led in led_group_1 {
+        set_led(midi_out, led, led == led_group_1_lit)?;
+    }
+
+    set_led(midi_out, 0x42, input.eg1_gate)?;
+    set_led(midi_out, 0x32, input.eg1_repeat)?;
+
+    Ok(())
+}
+
 define_rack! {
     MyRack: Rack<Input> {
         lfo1: VCO {
@@ -79,6 +176,10 @@ define_rack! {
             freq_max: 20_000.0,
         },
     }
+}
+
+fn rack_output(rack: &MyRack) -> f32 {
+    rack.lpf1.borrow().out
 }
 
 fn main() -> Result<()> {
@@ -157,109 +258,12 @@ fn setup_cpal_config(cpal_device: &cpal::Device) -> Result<cpal::StreamConfig> {
     Ok(cpal_config)
 }
 
-fn update_input(input: &mut Input, message: &MidiMessage) {
-    if let MidiMessage::ControlChange { ch: 0, num, value } = message {
-        let value = *value as f32 / 127.0;
-        match num {
-            // slider 1
-            0x00 => input.lfo1_freq = value,
-            // slider 2
-            0x01 => input.vco1_freq = value,
-            // knob 1
-            0x10 => input.vco1_lfo1_amount = value,
-            // slider 3
-            0x02 => input.eg1_a = value,
-            // knob 3
-            0x12 => input.eg1_d = value,
-            // slider 4
-            0x03 => input.eg1_s = value,
-            // knob 4
-            0x13 => input.eg1_r = value,
-            // slider 5
-            0x04 => input.lpf1_freq = value,
-            // knob 5
-            0x14 => input.lpf1_resonance = value,
-            // knob 6
-            0x15 => input.lpf1_lfo1_amount = value,
-            _ => {
-                // handle buttons
-                if value > 0.5 {
-                    match num {
-                        // Solo 1
-                        0x20 => {
-                            if input.lfo1_waveform == WaveForm::Sine {
-                                input.lfo1_waveform = WaveForm::Triangle;
-                            } else {
-                                input.lfo1_waveform = WaveForm::Sine;
-                            }
-                        }
-                        // Mute 1
-                        0x30 => input.lfo1_waveform = WaveForm::Sawtooth,
-                        // Rec 1
-                        0x40 => input.lfo1_waveform = WaveForm::Square,
-                        // Solo 2
-                        0x21 => {
-                            if input.vco1_waveform == WaveForm::Sine {
-                                input.vco1_waveform = WaveForm::Triangle;
-                            } else {
-                                input.vco1_waveform = WaveForm::Sine
-                            }
-                        }
-                        // Mute 2
-                        0x31 => input.vco1_waveform = WaveForm::Sawtooth,
-                        // Rec 2
-                        0x41 => input.vco1_waveform = WaveForm::Square,
-                        // Mute 3
-                        0x32 => input.eg1_repeat = !input.eg1_repeat,
-                        // Rec 3
-                        0x42 => input.eg1_gate = true,
-                        _ => {}
-                    }
-                } else {
-                    #[allow(clippy::single_match)]
-                    match num {
-                        0x42 => input.eg1_gate = false,
-                        _ => {}
-                    }
-                }
-            }
-        }
-    }
-}
-
 fn set_led(midi_out: &mut midir::MidiOutputConnection, num: u8, on: bool) -> Result<()> {
     if on {
         midi_out.send(&[0xB0, num, 0x7F])?;
     } else {
         midi_out.send(&[0xB0, num, 0x00])?;
     }
-    Ok(())
-}
-
-fn update_led(input: &Input, midi_out: &mut midir::MidiOutputConnection) -> Result<()> {
-    let led_group_0 = [0x20, 0x30, 0x40];
-    let led_group_0_lit = match input.lfo1_waveform {
-        WaveForm::Sine | WaveForm::Triangle => 0x20,
-        WaveForm::Sawtooth => 0x30,
-        WaveForm::Square => 0x40,
-    };
-    for led in led_group_0 {
-        set_led(midi_out, led, led == led_group_0_lit)?;
-    }
-
-    let led_group_1 = [0x21, 0x31, 0x41];
-    let led_group_1_lit = match input.vco1_waveform {
-        WaveForm::Sine | WaveForm::Triangle => 0x21,
-        WaveForm::Sawtooth => 0x31,
-        WaveForm::Square => 0x41,
-    };
-    for led in led_group_1 {
-        set_led(midi_out, led, led == led_group_1_lit)?;
-    }
-
-    set_led(midi_out, 0x42, input.eg1_gate)?;
-    set_led(midi_out, 0x32, input.eg1_repeat)?;
-
     Ok(())
 }
 
@@ -313,7 +317,7 @@ fn run_synth(
                 let input = &*input;
                 for frame in data.chunks_mut(2) {
                     rack.update(input);
-                    let value = rack.lpf1.borrow().out;
+                    let value = rack_output(&rack);
                     for sample in frame.iter_mut() {
                         *sample = value;
                     }
