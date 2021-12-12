@@ -216,6 +216,8 @@ fn update_led(input: &Input, midi_out: &mut midir::MidiOutputConnection) -> Resu
         set_led(midi_out, led, led == led_group_1_lit)?;
     }
 
+    set_led(midi_out, 0x42, input.eg1_gate)?;
+
     Ok(())
 }
 
