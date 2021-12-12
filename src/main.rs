@@ -6,9 +6,9 @@ use rustsynth::define_rack;
 use rustsynth::midi_message::MidiMessage;
 use rustsynth::util::SyncError;
 use rustsynth::WaveForm;
-use rustsynth::{Buf, EG, VCO};
+use rustsynth::{Buf, EG, IIRLPF, VCO};
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Input {
     pub vco1_freq: f32,
     pub vco1_waveform: WaveForm,
@@ -21,6 +21,27 @@ pub struct Input {
     pub eg1_r: f32,
     pub eg1_gate: bool,
     pub eg1_repeat: bool,
+    pub lpf1_freq: f32,
+    pub lpef1_resonance: f32,
+}
+impl Default for Input {
+    fn default() -> Self {
+        Self {
+            vco1_freq: 0.5,
+            vco1_waveform: WaveForm::Sine,
+            lfo1_freq: 0.5,
+            lfo1_waveform: WaveForm::Sine,
+            vco1_lfo1_amount: 0.0,
+            eg1_a: 0.1,
+            eg1_d: 0.05,
+            eg1_s: 0.8,
+            eg1_r: 0.1,
+            eg1_gate: false,
+            eg1_repeat: false,
+            lpf1_freq: 0.1,
+            lpef1_resonance: 0.05,
+        }
+    }
 }
 
 define_rack! {
@@ -47,7 +68,14 @@ define_rack! {
         },
         vca1: Buf {
             in_value: Box::new(|rack, _| rack.vco1.borrow().out * rack.eg1.borrow().out),
-        }
+        },
+        lpf1: IIRLPF {
+            in_freq: Box::new(|_, input| input.lpf1_freq),
+            in_resonance: Box::new(|_, input| input.lpef1_resonance),
+            in_value: Box::new(|rack, _| rack.vca1.borrow().out),
+            freq_min: 100.0,
+            freq_max: 20_000.0,
+        },
     }
 }
 
@@ -145,6 +173,10 @@ fn update_input(input: &mut Input, message: &MidiMessage) {
             0x03 => input.eg1_s = value,
             // knob 4
             0x13 => input.eg1_r = value,
+            // slider 5
+            0x04 => input.lpf1_freq = value,
+            // knob 5
+            0x14 => input.lpef1_resonance = value,
             _ => {
                 // handle buttons
                 if value > 0.5 {
@@ -180,6 +212,7 @@ fn update_input(input: &mut Input, message: &MidiMessage) {
                         _ => {}
                     }
                 } else {
+                    #[allow(clippy::single_match)]
                     match num {
                         0x42 => input.eg1_gate = false,
                         _ => {}
@@ -276,7 +309,7 @@ fn run_synth(
                 let input = &*input;
                 for frame in data.chunks_mut(2) {
                     rack.update(input);
-                    let value = rack.vca1.borrow().out;
+                    let value = rack.lpf1.borrow().out;
                     for sample in frame.iter_mut() {
                         *sample = value;
                     }
@@ -291,6 +324,6 @@ fn run_synth(
 
     loop {
         std::thread::sleep(std::time::Duration::from_millis(2000));
-        let _ = dbg!(input.lock());
+        let _lock = dbg!(input.lock());
     }
 }
