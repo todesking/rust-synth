@@ -82,6 +82,7 @@ impl<R: Rack> Module<R> for VCO<R> {
 pub struct EG<R: Rack> {
     pub _rack: PhantomData<R>,
     pub in_gate: Box<dyn InPort<R, bool>>,
+    pub in_repeat: Box<dyn InPort<R, bool>>,
     /// sec
     pub in_a: Box<dyn InPort<R, f32>>,
     /// sec
@@ -108,13 +109,14 @@ impl<R: Rack> Default for EG<R> {
         EG {
             _rack: PhantomData,
             in_gate: Box::new(|_, _| false),
+            in_repeat: Box::new(|_, _| false),
             in_a: Box::new(|_, _| 0.0),
             in_d: Box::new(|_, _| 0.0),
             in_s: Box::new(|_, _| 1.0),
             in_r: Box::new(|_, _| 0.0),
             state: EGState::Idle,
             clock: 0.0,
-            level: 1.0,
+            level: 0.0,
             out: 0.0,
         }
     }
@@ -122,19 +124,20 @@ impl<R: Rack> Default for EG<R> {
 impl<R: Rack> Module<R> for EG<R> {
     fn update(&mut self, rack: &R, input: &R::Input) {
         let gate = (self.in_gate)(rack, input);
+        let repeat = (self.in_repeat)(rack, input);
         let a = (self.in_a)(rack, input);
         let d = (self.in_d)(rack, input);
         let s = (self.in_s)(rack, input);
         let r = (self.in_r)(rack, input);
         match self.state {
             EGState::Idle => {
-                if gate {
+                if gate || repeat {
                     self.state = EGState::A;
                     self.clock = 0.0;
                 }
             }
             EGState::A => {
-                if !gate {
+                if !gate && !repeat {
                     self.state = EGState::R;
                     self.clock = 0.0;
                     self.level = self.out;
@@ -144,7 +147,7 @@ impl<R: Rack> Module<R> for EG<R> {
                 }
             }
             EGState::D => {
-                if !gate {
+                if !gate && !repeat {
                     self.state = EGState::R;
                     self.clock = 0.0;
                     self.level = self.out;
@@ -164,9 +167,11 @@ impl<R: Rack> Module<R> for EG<R> {
                 if !gate && self.clock >= r {
                     self.state = EGState::Idle;
                     self.clock = 0.0;
+                    self.level = 0.0;
                 } else if gate {
                     self.state = EGState::A;
                     self.clock = 0.0;
+                    self.level = self.out;
                 }
             }
         }
@@ -177,7 +182,7 @@ impl<R: Rack> Module<R> for EG<R> {
             }
             EGState::A => {
                 if a > 0.0 {
-                    self.out = self.out.max(1.0 / a * self.clock);
+                    self.out = self.level.max(1.0 / a * self.clock);
                 }
             }
             EGState::D => {

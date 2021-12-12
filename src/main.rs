@@ -20,6 +20,7 @@ pub struct Input {
     pub eg1_s: f32,
     pub eg1_r: f32,
     pub eg1_gate: bool,
+    pub eg1_repeat: bool,
 }
 
 define_rack! {
@@ -38,6 +39,7 @@ define_rack! {
         },
         eg1: EG {
             in_gate: Box::new(|_, input| input.eg1_gate),
+            in_repeat: Box::new(|_, input| input.eg1_repeat),
             in_a: Box::new(|_, input| input.eg1_a),
             in_d: Box::new(|_, input| input.eg1_d),
             in_s: Box::new(|_, input| input.eg1_s),
@@ -171,6 +173,8 @@ fn update_input(input: &mut Input, message: &MidiMessage) {
                         0x31 => input.vco1_waveform = WaveForm::Sawtooth,
                         // Rec 2
                         0x41 => input.vco1_waveform = WaveForm::Square,
+                        // Mute 3
+                        0x32 => input.eg1_repeat = !input.eg1_repeat,
                         // Rec 3
                         0x42 => input.eg1_gate = true,
                         _ => {}
@@ -217,6 +221,7 @@ fn update_led(input: &Input, midi_out: &mut midir::MidiOutputConnection) -> Resu
     }
 
     set_led(midi_out, 0x42, input.eg1_gate)?;
+    set_led(midi_out, 0x32, input.eg1_repeat)?;
 
     Ok(())
 }
