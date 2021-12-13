@@ -85,7 +85,13 @@ fn update_input(input: &mut Input, message: &MidiMessage) {
                         // Mute 1
                         0x30 => input.lfo1_waveform = WaveForm::Sawtooth,
                         // Rec 1
-                        0x40 => input.lfo1_waveform = WaveForm::Square,
+                        0x40 => {
+                            if input.lfo1_waveform == WaveForm::Square {
+                                input.lfo1_waveform = WaveForm::Noise
+                            } else {
+                                input.lfo1_waveform = WaveForm::Square
+                            }
+                        }
                         // Solo 2
                         0x21 => {
                             if input.vco1_waveform == WaveForm::Sine {
@@ -97,7 +103,13 @@ fn update_input(input: &mut Input, message: &MidiMessage) {
                         // Mute 2
                         0x31 => input.vco1_waveform = WaveForm::Sawtooth,
                         // Rec 2
-                        0x41 => input.vco1_waveform = WaveForm::Square,
+                        0x41 => {
+                            if input.vco1_waveform == WaveForm::Square {
+                                input.vco1_waveform = WaveForm::Noise
+                            } else {
+                                input.vco1_waveform = WaveForm::Square
+                            }
+                        }
                         // Mute 3
                         0x32 => input.eg1_repeat = !input.eg1_repeat,
                         // Rec 3
@@ -121,7 +133,7 @@ fn update_led(input: &Input, midi_out: &mut midir::MidiOutputConnection) -> Resu
     let led_group_0_lit = match input.lfo1_waveform {
         WaveForm::Sine | WaveForm::Triangle => 0x20,
         WaveForm::Sawtooth => 0x30,
-        WaveForm::Square => 0x40,
+        WaveForm::Square | WaveForm::Noise => 0x40,
     };
     for led in led_group_0 {
         set_led(midi_out, led, led == led_group_0_lit)?;
@@ -131,7 +143,7 @@ fn update_led(input: &Input, midi_out: &mut midir::MidiOutputConnection) -> Resu
     let led_group_1_lit = match input.vco1_waveform {
         WaveForm::Sine | WaveForm::Triangle => 0x21,
         WaveForm::Sawtooth => 0x31,
-        WaveForm::Square => 0x41,
+        WaveForm::Square | WaveForm::Noise => 0x41,
     };
     for led in led_group_1 {
         set_led(midi_out, led, led == led_group_1_lit)?;

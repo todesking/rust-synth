@@ -79,6 +79,14 @@ impl<R: Rack> Module<R> for VCO<R> {
                     -1.0
                 }
             }
+            WaveForm::Noise => {
+                if 0.0 <= self.phase && self.phase < freq * pi2 / SAMPLES_PER_SEC as f32 {
+                    let r: f32 = rand::random();
+                    -1.0 + r * 2.0
+                } else {
+                    self.out
+                }
+            }
         }
     }
 }
@@ -323,6 +331,7 @@ pub enum WaveForm {
     Sawtooth,
     Triangle,
     Square,
+    Noise,
 }
 impl Default for WaveForm {
     fn default() -> WaveForm {
