@@ -331,10 +331,23 @@ impl Default for WaveForm {
 }
 
 #[macro_export]
+macro_rules! define_rack_field_value {
+    ($param_rack:ident, $ty_rack:ident, $param_input:ident, $ty_input:ident, { $expr:expr }) => {
+        ::std::boxed::Box::new(
+            #[allow(unused_variables)]
+            |$param_rack: &$ty_rack, $param_input: &$ty_input| $expr,
+        )
+    };
+    ($param_rack:ident, $ty_rack:ident, $param_input:ident, $ty_input:ident, $expr:expr) => {
+        $expr
+    };
+}
+
+#[macro_export]
 macro_rules! define_rack {
-    ($rack_name:ident : Rack<$input:ident> {$(
+    ($rack_name:ident : Rack<$input:ident>($param_rack:ident, $param_input:ident) {$(
         $mod_name:ident : $mod_type:ident {$(
-            $field_name:ident : $field_value:expr
+            $field_name:ident : $field_value:tt
         ),*$(,)?}
     ),*$(,)?}) => {
         pub struct $rack_name {
@@ -345,7 +358,7 @@ macro_rules! define_rack {
                 $rack_name {
                     $($mod_name: ::std::cell::RefCell::new(
                         $mod_type {
-                            $($field_name: $field_value),*
+                            $($field_name: $crate::define_rack_field_value!($param_rack, $rack_name, $param_input, $input, $field_value)),*
                             ,..::std::default::Default::default()
                         }
                     )),*
