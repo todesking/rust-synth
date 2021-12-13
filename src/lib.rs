@@ -6,6 +6,7 @@ use std::marker::PhantomData;
 
 pub trait Rack {
     type Input;
+    fn update(&self, input: &Self::Input);
 }
 pub trait Module<R: Rack> {
     fn update(&mut self, rack: &R, input: &R::Input);
@@ -373,15 +374,15 @@ macro_rules! define_rack {
                     )),*
                 }
             }
-            pub fn update(&self, input: &$input) {
+        }
+        impl ::rustsynth::Rack for $rack_name {
+            type Input = $input;
+            fn update(&self, input: &$input) {
                 $({
                     let mut module = ::std::cell::RefCell::borrow_mut(&self.$mod_name);
                     ::rustsynth::Module::update(&mut *module, self, input);
                 })*
             }
-        }
-        impl ::rustsynth::Rack for $rack_name {
-            type Input = $input;
         }
     };
 }

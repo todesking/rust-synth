@@ -6,7 +6,7 @@ use rustsynth::define_rack;
 use rustsynth::midi_message::MidiMessage;
 use rustsynth::util::SyncError;
 use rustsynth::WaveForm;
-use rustsynth::{Buf, EG, IIRLPF, VCO};
+use rustsynth::{Rack, Buf, EG, IIRLPF, VCO};
 
 #[derive(Debug, Clone)]
 pub struct Input {
