@@ -6,153 +6,524 @@ use rustsynth::define_rack;
 use rustsynth::midi_message::MidiMessage;
 use rustsynth::util::SyncError;
 use rustsynth::WaveForm;
-use rustsynth::{Rack, Buf, EG, IIRLPF, VCO};
+use rustsynth::{Buf, Rack, EG, IIRLPF, VCO};
 
-#[derive(Debug, Clone)]
-pub struct Input {
-    pub vco1_freq: f32,
-    pub vco1_waveform: WaveForm,
-    pub lfo1_freq: f32,
-    pub lfo1_waveform: WaveForm,
-    pub vco1_lfo1_amount: f32,
-    pub eg1_a: f32,
-    pub eg1_d: f32,
-    pub eg1_s: f32,
-    pub eg1_r: f32,
-    pub eg1_gate: bool,
-    pub eg1_repeat: bool,
-    pub lpf1_freq: f32,
-    pub lpf1_resonance: f32,
-    pub lpf1_lfo1_amount: f32,
+pub trait SimpleEnum
+where
+    Self: Sized,
+{
+    fn from_name(name: &str) -> Option<Self>;
+    fn to_name(&self) -> &'static str;
 }
-impl Default for Input {
-    fn default() -> Self {
-        Self {
-            vco1_freq: 0.5,
-            vco1_waveform: WaveForm::Sine,
-            lfo1_freq: 0.5,
-            lfo1_waveform: WaveForm::Sine,
-            vco1_lfo1_amount: 0.0,
-            eg1_a: 0.1,
-            eg1_d: 0.05,
-            eg1_s: 0.8,
-            eg1_r: 0.1,
-            eg1_gate: false,
-            eg1_repeat: false,
-            lpf1_freq: 0.1,
-            lpf1_resonance: 0.05,
-            lpf1_lfo1_amount: 0.0,
+impl SimpleEnum for WaveForm {
+    fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "Sine" => Some(WaveForm::Sine),
+            "Triangle" => Some(WaveForm::Triangle),
+            "Sawtooth" => Some(WaveForm::Sawtooth),
+            "Square" => Some(WaveForm::Square),
+            "Noise" => Some(WaveForm::Noise),
+            _ => None,
+        }
+    }
+    fn to_name(&self) -> &'static str {
+        match self {
+            WaveForm::Sine => "Sine",
+            WaveForm::Triangle => "Triangle",
+            WaveForm::Sawtooth => "Sawtooth",
+            WaveForm::Square => "Square",
+            WaveForm::Noise => "Noise",
         }
     }
 }
 
-fn update_input(input: &mut Input, message: &MidiMessage) {
-    if let MidiMessage::ControlChange { ch: 0, num, value } = message {
-        let value = *value as f32 / 127.0;
-        match num {
-            // slider 1
-            0x00 => input.lfo1_freq = value,
-            // slider 2
-            0x01 => input.vco1_freq = value,
-            // knob 1
-            0x10 => input.vco1_lfo1_amount = value,
-            // slider 3
-            0x02 => input.eg1_a = value,
-            // knob 3
-            0x12 => input.eg1_d = value,
-            // slider 4
-            0x03 => input.eg1_s = value,
-            // knob 4
-            0x13 => input.eg1_r = value,
-            // slider 5
-            0x04 => input.lpf1_freq = value,
-            // knob 5
-            0x14 => input.lpf1_resonance = value,
-            // knob 6
-            0x15 => input.lpf1_lfo1_amount = value,
-            _ => {
-                // handle buttons
-                if value > 0.5 {
-                    match num {
-                        // Solo 1
-                        0x20 => {
-                            if input.lfo1_waveform == WaveForm::Sine {
-                                input.lfo1_waveform = WaveForm::Triangle;
-                            } else {
-                                input.lfo1_waveform = WaveForm::Sine;
+pub enum ButtonMode {
+    Toggle,
+    Momentary,
+}
+
+pub enum InputConfig {
+    F32 { name: String },
+    Bool { name: String, mode: ButtonMode },
+    Enum { name: String, values: Vec<String> },
+}
+impl InputConfig {
+    fn name(&self) -> &str {
+        match self {
+            Self::F32 { name } => name,
+            Self::Bool { name, .. } => name,
+            Self::Enum { name, .. } => name,
+        }
+    }
+}
+
+pub enum OutputConfig {
+    Bool {
+        name: String,
+        out: Key,
+    },
+    Enum {
+        name: String,
+        out: Key,
+        values: Vec<String>,
+    },
+}
+impl OutputConfig {
+    fn name(&self) -> &str {
+        match self {
+            OutputConfig::Bool { name, .. } => name,
+            OutputConfig::Enum { name, .. } => name,
+        }
+    }
+}
+
+pub struct StateDefinition<S> {
+    accessors: std::collections::HashMap<String, FieldAccessor<S>>,
+}
+pub struct StateInput<S> {
+    state_definition: std::sync::Arc<StateDefinition<S>>,
+    inputs: std::collections::HashMap<Key, InputConfig>,
+}
+pub struct StateOutput<S> {
+    state_definition: std::sync::Arc<StateDefinition<S>>,
+    outputs: Vec<OutputConfig>,
+}
+impl<S> StateDefinition<S> {
+    pub fn new() -> Self {
+        Self {
+            accessors: std::collections::HashMap::new(),
+        }
+    }
+    pub fn into_io(self) -> (StateInput<S>, StateOutput<S>) {
+        let sd = std::sync::Arc::new(self);
+        (StateInput::new(sd.clone()), StateOutput::new(sd.clone()))
+    }
+    pub fn define_field(&mut self, name: String, accessor: FieldAccessor<S>) {
+        self.accessors.insert(name, accessor);
+    }
+    pub fn assert_has_field(&self, name: &str) {
+        if !self.accessors.contains_key(name) {
+            panic!("Undefined field: {}", name);
+        }
+    }
+    pub fn field(&self, name: &str) -> &FieldAccessor<S> {
+        self.accessors
+            .get(name)
+            .unwrap_or_else(|| panic!("Undefined field: {}", name))
+    }
+}
+impl<S> StateInput<S> {
+    pub fn new(state_definition: std::sync::Arc<StateDefinition<S>>) -> StateInput<S> {
+        StateInput {
+            state_definition,
+            inputs: std::collections::HashMap::new(),
+        }
+    }
+    pub fn define_input(&mut self, key: Key, input: InputConfig) {
+        self.state_definition.assert_has_field(input.name());
+        self.inputs.insert(key, input);
+    }
+    pub fn update_state(&self, state: &mut S, key: Key, value: u8) {
+        if let Some(input) = self.inputs.get(&key) {
+            match input {
+                InputConfig::Bool { name, mode } => match self.state_definition.field(name) {
+                    FieldAccessor::Bool(get, set) => {
+                        let pressed = 0x40 <= value;
+                        match mode {
+                            ButtonMode::Momentary => {
+                                set(state, pressed);
+                            }
+                            ButtonMode::Toggle => {
+                                let current = get(state);
+                                if pressed {
+                                    set(state, !current);
+                                }
                             }
                         }
-                        // Mute 1
-                        0x30 => input.lfo1_waveform = WaveForm::Sawtooth,
-                        // Rec 1
-                        0x40 => {
-                            if input.lfo1_waveform == WaveForm::Square {
-                                input.lfo1_waveform = WaveForm::Noise
-                            } else {
-                                input.lfo1_waveform = WaveForm::Square
-                            }
-                        }
-                        // Solo 2
-                        0x21 => {
-                            if input.vco1_waveform == WaveForm::Sine {
-                                input.vco1_waveform = WaveForm::Triangle;
-                            } else {
-                                input.vco1_waveform = WaveForm::Sine
-                            }
-                        }
-                        // Mute 2
-                        0x31 => input.vco1_waveform = WaveForm::Sawtooth,
-                        // Rec 2
-                        0x41 => {
-                            if input.vco1_waveform == WaveForm::Square {
-                                input.vco1_waveform = WaveForm::Noise
-                            } else {
-                                input.vco1_waveform = WaveForm::Square
-                            }
-                        }
-                        // Mute 3
-                        0x32 => input.eg1_repeat = !input.eg1_repeat,
-                        // Rec 3
-                        0x42 => input.eg1_gate = true,
-                        _ => {}
                     }
-                } else {
-                    #[allow(clippy::single_match)]
-                    match num {
-                        0x42 => input.eg1_gate = false,
-                        _ => {}
+                    _ => {
+                        panic!("assertion error: {}", name);
                     }
-                }
+                },
+                InputConfig::F32 { name } => match self.state_definition.field(name) {
+                    FieldAccessor::F32(_, set) => {
+                        let value = value as f32 / 127.0f32;
+                        set(state, value);
+                    }
+                    _ => {
+                        panic!("assertion error: {}", name);
+                    }
+                },
+                InputConfig::Enum { name, values } => match self.state_definition.field(name) {
+                    FieldAccessor::Enum(get, set) => {
+                        let pressed = 0x40 <= value;
+                        if pressed {
+                            let current = get(state);
+                            let mut index = 0;
+                            for (i, v) in values.iter().enumerate() {
+                                if v == current {
+                                    index = (i + 1) % values.len();
+                                    break;
+                                }
+                            }
+                            set(state, &values[index]);
+                        }
+                    }
+                    _ => {
+                        panic!("assertion error: {}", name);
+                    }
+                },
             }
         }
     }
 }
-
-fn update_led(input: &Input, midi_out: &mut midir::MidiOutputConnection) -> Result<()> {
-    let led_group_0 = [0x20, 0x30, 0x40];
-    let led_group_0_lit = match input.lfo1_waveform {
-        WaveForm::Sine | WaveForm::Triangle => 0x20,
-        WaveForm::Sawtooth => 0x30,
-        WaveForm::Square | WaveForm::Noise => 0x40,
-    };
-    for led in led_group_0 {
-        set_led(midi_out, led, led == led_group_0_lit)?;
+impl<S> StateOutput<S> {
+    pub fn new(state_definition: std::sync::Arc<StateDefinition<S>>) -> StateOutput<S> {
+        StateOutput {
+            state_definition,
+            outputs: Vec::new(),
+        }
     }
-
-    let led_group_1 = [0x21, 0x31, 0x41];
-    let led_group_1_lit = match input.vco1_waveform {
-        WaveForm::Sine | WaveForm::Triangle => 0x21,
-        WaveForm::Sawtooth => 0x31,
-        WaveForm::Square | WaveForm::Noise => 0x41,
-    };
-    for led in led_group_1 {
-        set_led(midi_out, led, led == led_group_1_lit)?;
+    pub fn define_output(&mut self, output: OutputConfig) {
+        self.state_definition.assert_has_field(output.name());
+        self.outputs.push(output);
     }
+    pub fn output<F: FnMut(&Key, bool) -> Result<()>>(&self, state: &S, mut f: F) -> Result<()> {
+        for o in self.outputs.iter() {
+            match o {
+                OutputConfig::Bool { name, out } => match self.state_definition.field(name) {
+                    FieldAccessor::Bool(get, _) => {
+                        f(out, get(state))?;
+                    }
+                    _ => {
+                        panic!("assertion error: {}", name);
+                    }
+                },
+                OutputConfig::Enum { name, out, values } => {
+                    match self.state_definition.field(name) {
+                        FieldAccessor::Enum(get, _) => {
+                            let s = get(state);
+                            f(out, values.iter().any(|v| v == s))?;
+                        }
+                        _ => {
+                            panic!("assertion error: {}", name);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
 
-    set_led(midi_out, 0x42, input.eg1_gate)?;
-    set_led(midi_out, 0x32, input.eg1_repeat)?;
+type Get<S, T> = Box<dyn Fn(&S) -> T + Send + Sync>;
+type Set<S, T> = Box<dyn Fn(&mut S, T) + Send + Sync>;
+pub enum FieldAccessor<S> {
+    F32(Get<S, f32>, Set<S, f32>),
+    Bool(Get<S, bool>, Set<S, bool>),
+    Enum(
+        Get<S, &'static str>,
+        Box<dyn Fn(&mut S, &str) + Send + Sync>,
+    ),
+}
 
-    Ok(())
+#[derive(PartialEq, Eq, Hash, Clone)]
+pub enum Key {
+    ControlChange(u8),
+}
+
+pub trait DefineField<S, T> {
+    fn define_field<
+        Get: Fn(&S) -> &T + 'static + Send + Sync,
+        Set: Fn(&mut S, T) + 'static + Send + Sync,
+    >(
+        &mut self,
+        name: String,
+        get: Get,
+        set: Set,
+    );
+}
+impl<S> DefineField<S, f32> for StateDefinition<S> {
+    fn define_field<
+        Get: Fn(&S) -> &f32 + 'static + Send + Sync,
+        Set: Fn(&mut S, f32) + 'static + Send + Sync,
+    >(
+        &mut self,
+        name: String,
+        get: Get,
+        set: Set,
+    ) {
+        self.define_field(
+            name,
+            FieldAccessor::F32(
+                Box::new(move |input| *get(input)),
+                Box::new(move |input, value| set(input, value)),
+            ),
+        )
+    }
+}
+impl<S> DefineField<S, bool> for StateDefinition<S> {
+    fn define_field<
+        Get: Fn(&S) -> &bool + 'static + Send + Sync,
+        Set: Fn(&mut S, bool) + 'static + Send + Sync,
+    >(
+        &mut self,
+        name: String,
+        get: Get,
+        set: Set,
+    ) {
+        self.define_field(
+            name,
+            FieldAccessor::Bool(
+                Box::new(move |input| *get(input)),
+                Box::new(move |input, value| set(input, value)),
+            ),
+        )
+    }
+}
+impl<S, E: SimpleEnum> DefineField<S, E> for StateDefinition<S> {
+    fn define_field<
+        Get: Fn(&S) -> &E + 'static + Send + Sync,
+        Set: Fn(&mut S, E) + 'static + Send + Sync,
+    >(
+        &mut self,
+        name: String,
+        get: Get,
+        set: Set,
+    ) {
+        self.define_field(
+            name,
+            FieldAccessor::Enum(
+                Box::new(move |input| get(input).to_name()),
+                Box::new(move |input, value| {
+                    if let Some(value) = E::from_name(value) {
+                        set(input, value)
+                    }
+                }),
+            ),
+        )
+    }
+}
+
+macro_rules! define_input_field_default {
+    () => {
+        ::std::default::Default::default()
+    };
+    ($expr:expr) => {
+        $expr
+    };
+}
+macro_rules! define_input {
+    ($name:ident {
+        $($field:ident : $ty:ty $(= $default_value:tt)?),*$(,)?
+    }) => {
+        #[derive(Clone, Debug)]
+        pub struct $name {
+            $(
+                pub $field: $ty
+            ),*
+        }
+        impl $name {
+            pub fn new_state_definition() -> StateDefinition<Self> {
+                let mut key_mapping = StateDefinition::<$name>::new();
+                $(
+                    DefineField::<$name, $ty>::define_field(
+                        &mut key_mapping,
+                        stringify!($field).to_owned(),
+                        |input| &input.$field,
+                        |input, value| input.$field = value
+                    );
+                )*
+                key_mapping
+            }
+        }
+        impl ::std::default::Default for $name {
+            fn default() -> $name {
+                $name {
+                    $(
+                        $field: define_input_field_default!($($default_value)?)
+                    ),*
+                }
+            }
+        }
+    };
+}
+
+define_input! {
+    Input {
+        vco1_freq: f32 = 0.5,
+        vco1_waveform: WaveForm = (WaveForm::Sine),
+        lfo1_freq: f32 = 0.5,
+        lfo1_waveform: WaveForm = (WaveForm::Sine),
+        vco1_lfo1_amount: f32 = 0.0,
+        eg1_a: f32 = 0.1,
+        eg1_d: f32 = 0.05,
+        eg1_s: f32 = 0.8,
+        eg1_r: f32 = 0.1,
+        eg1_gate: bool = false,
+        eg1_repeat: bool = false,
+        lpf1_freq: f32 = 0.1,
+        lpf1_resonance: f32 = 0.05,
+        lpf1_lfo1_amount: f32 = 0.0,
+    }
+}
+fn setup_input<S>(state_in: &mut StateInput<S>) {
+    state_in.define_input(
+        Key::ControlChange(0x00),
+        InputConfig::F32 {
+            name: "lfo1_freq".to_owned(),
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x01),
+        InputConfig::F32 {
+            name: "vco1_freq".to_owned(),
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x10),
+        InputConfig::F32 {
+            name: "vco1_lfo1_amount".to_owned(),
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x02),
+        InputConfig::F32 {
+            name: "eg1_a".to_owned(),
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x12),
+        InputConfig::F32 {
+            name: "eg1_d".to_owned(),
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x03),
+        InputConfig::F32 {
+            name: "eg1_s".to_owned(),
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x13),
+        InputConfig::F32 {
+            name: "eg1_r".to_owned(),
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x04),
+        InputConfig::F32 {
+            name: "lpf1_freq".to_owned(),
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x14),
+        InputConfig::F32 {
+            name: "lpf1_resonance".to_owned(),
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x15),
+        InputConfig::F32 {
+            name: "lpf1_lfo1_amount".to_owned(),
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x20),
+        InputConfig::Enum {
+            name: "lfo1_waveform".to_owned(),
+            values: vec!["Sine".to_owned(), "Triangle".to_owned()],
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x30),
+        InputConfig::Enum {
+            name: "lfo1_waveform".to_owned(),
+            values: vec!["Sawtooth".to_owned()],
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x40),
+        InputConfig::Enum {
+            name: "lfo1_waveform".to_owned(),
+            values: vec!["Square".to_owned(), "Noise".to_owned()],
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x21),
+        InputConfig::Enum {
+            name: "vco1_waveform".to_owned(),
+            values: vec!["Sine".to_owned(), "Triangle".to_owned()],
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x31),
+        InputConfig::Enum {
+            name: "vco1_waveform".to_owned(),
+            values: vec!["Sawtooth".to_owned()],
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x41),
+        InputConfig::Enum {
+            name: "vco1_waveform".to_owned(),
+            values: vec!["Square".to_owned(), "Noise".to_owned()],
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x32),
+        InputConfig::Bool {
+            name: "eg1_repeat".to_owned(),
+            mode: ButtonMode::Toggle,
+        },
+    );
+    state_in.define_input(
+        Key::ControlChange(0x42),
+        InputConfig::Bool {
+            name: "eg1_gate".to_owned(),
+            mode: ButtonMode::Momentary,
+        },
+    );
+}
+fn setup_output<S>(state_out: &mut StateOutput<S>) {
+    state_out.define_output(OutputConfig::Enum {
+        name: "lfo1_waveform".to_owned(),
+        values: vec!["Sine".to_owned(), "Triangle".to_owned()],
+        out: Key::ControlChange(0x20),
+    });
+    state_out.define_output(OutputConfig::Enum {
+        name: "lfo1_waveform".to_owned(),
+        values: vec!["Sawtooth".to_owned()],
+        out: Key::ControlChange(0x30),
+    });
+    state_out.define_output(OutputConfig::Enum {
+        name: "lfo1_waveform".to_owned(),
+        values: vec!["Square".to_owned(), "Noise".to_owned()],
+        out: Key::ControlChange(0x40),
+    });
+    state_out.define_output(OutputConfig::Enum {
+        name: "vco1_waveform".to_owned(),
+        values: vec!["Sine".to_owned(), "Triangle".to_owned()],
+        out: Key::ControlChange(0x21),
+    });
+    state_out.define_output(OutputConfig::Enum {
+        name: "vco1_waveform".to_owned(),
+        values: vec!["Sawtooth".to_owned()],
+        out: Key::ControlChange(0x31),
+    });
+    state_out.define_output(OutputConfig::Enum {
+        name: "vco1_waveform".to_owned(),
+        values: vec!["Square".to_owned(), "Noise".to_owned()],
+        out: Key::ControlChange(0x41),
+    });
+    state_out.define_output(OutputConfig::Bool {
+        name: "eg1_gate".to_owned(),
+        out: Key::ControlChange(0x42),
+    });
+    state_out.define_output(OutputConfig::Bool {
+        name: "eg1_repeat".to_owned(),
+        out: Key::ControlChange(0x32),
+    });
 }
 
 define_rack! {
@@ -279,6 +650,16 @@ fn set_led(midi_out: &mut midir::MidiOutputConnection, num: u8, on: bool) -> Res
     Ok(())
 }
 
+fn output<S>(
+    state_out: &StateOutput<S>,
+    state: &S,
+    midi_out: &mut midir::MidiOutputConnection,
+) -> Result<()> {
+    state_out.output(&state, |key, on| match key {
+        Key::ControlChange(num) => set_led(midi_out, *num, on),
+    })
+}
+
 fn run_synth(
     midi_in: midir::MidiInput,
     mut midi_out: midir::MidiOutputConnection,
@@ -288,10 +669,14 @@ fn run_synth(
     let input = std::sync::Arc::new(std::sync::Mutex::new(Input {
         ..Default::default()
     }));
-    update_led(&*input.lock().unwrap(), &mut midi_out)?;
     let port = &midi_in.ports()[0];
     let port_name = midi_in.port_name(port)?;
     println!("Connect to {}", &port_name);
+    let state_definition = Input::new_state_definition();
+    let (mut state_in, mut state_out) = state_definition.into_io();
+    setup_input(&mut state_in);
+    setup_output(&mut state_out);
+    output(&state_out, &*input.lock().unwrap(), &mut midi_out)?;
     let _in_con = midi_in
         .connect(
             port,
@@ -306,10 +691,19 @@ fn run_synth(
                             println!("Message: {:0X?}", message);
                             let input = {
                                 let mut input = input.lock().unwrap();
-                                update_input(&mut *input, &message);
-                                (&*input).clone()
+                                match message {
+                                    MidiMessage::ControlChange { ch: 0, num, value } => {
+                                        state_in.update_state(
+                                            &mut input,
+                                            Key::ControlChange(num),
+                                            value,
+                                        );
+                                    }
+                                    _ => {}
+                                }
+                                input.clone()
                             };
-                            update_led(&input, &mut midi_out).expect("update_led failed")
+                            output(&state_out, &input, &mut midi_out).expect("LED update failed");
                         }
                         Err(err) => println!("Error: {:?}", err),
                     };
