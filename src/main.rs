@@ -65,10 +65,6 @@ define_rack! {
     }
 }
 
-fn rack_output(rack: &MyRack) -> f32 {
-    rack.lpf1.borrow().out
-}
-
 fn main() -> Result<()> {
     let midi_out_con = setup_midi_output_connection()?;
     let midi_in = setup_midi_input()?;
@@ -76,7 +72,16 @@ fn main() -> Result<()> {
     let cpal_device = setup_cpal_device()?;
     let cpal_config = setup_cpal_config(&cpal_device)?;
 
-    run_synth(midi_in, midi_out_con, cpal_device, cpal_config)?;
+    let rack = MyRack::new();
+
+    run_synth(
+        rack,
+        |r| r.lpf1.borrow().out,
+        midi_in,
+        midi_out_con,
+        cpal_device,
+        cpal_config,
+    )?;
     Ok(())
 }
 
@@ -164,19 +169,22 @@ fn output<S>(
     })
 }
 
-fn run_synth(
+fn run_synth<R: Rack + Send + 'static>(
+    rack: R,
+    rack_out: impl Fn(&R) -> f32 + Send + 'static,
     midi_in: midir::MidiInput,
     mut midi_out: midir::MidiOutputConnection,
     device: cpal::Device,
     stream_config: cpal::StreamConfig,
 ) -> Result<()> {
-    let input = std::sync::Arc::new(std::sync::Mutex::new(Input {
-        ..Default::default()
-    }));
+    let input = std::sync::Arc::new(std::sync::Mutex::new(R::new_input()));
     let port = &midi_in.ports()[0];
     let port_name = midi_in.port_name(port)?;
     println!("Connect to {}", &port_name);
-    let state_definition = Input::new_state_definition();
+    let state_definition = {
+        use rustsynth::input::Input;
+        R::Input::new_state_definition()
+    };
     let config = rustsynth::config::load_config("nanokontrol2.toml")?;
     let (mut state_in, mut state_out) = state_definition.into_io();
     rustsynth::config::setup_state_io(&config, &mut state_in, &mut state_out)?;
@@ -217,7 +225,6 @@ fn run_synth(
         )
         .map_err(SyncError::new)?;
 
-    let rack = MyRack::new();
     let stream = device.build_output_stream(
         &stream_config,
         {
@@ -227,7 +234,7 @@ fn run_synth(
                 let input = &*input;
                 for frame in data.chunks_mut(2) {
                     rack.update(input);
-                    let value = rack_output(&rack);
+                    let value = rack_out(&rack);
                     for sample in frame.iter_mut() {
                         *sample = value;
                     }

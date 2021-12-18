@@ -1,6 +1,13 @@
 use crate::SimpleEnum;
 use anyhow::Result;
 
+pub trait Input: Send + Sync + Clone + std::fmt::Debug
+where
+    Self: Sized,
+{
+    fn new_state_definition() -> StateDefinition<Self>;
+}
+
 #[derive(Debug)]
 pub enum ButtonMode {
     Toggle,

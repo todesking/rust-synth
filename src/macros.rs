@@ -19,8 +19,8 @@ macro_rules! define_input {
                 pub $field: $ty
             ),*
         }
-        impl $name {
-            pub fn new_state_definition() -> $crate::input::StateDefinition<Self> {
+        impl $crate::input::Input for $name {
+            fn new_state_definition() -> $crate::input::StateDefinition<Self> {
                 let mut key_mapping = $crate::input::StateDefinition::<$name>::new();
                 $(
                     $crate::input::DefineField::<$name, $ty>::define_field(
@@ -82,6 +82,9 @@ macro_rules! define_rack {
         }
         impl $crate::module::Rack for $rack_name {
             type Input = $input;
+            fn new_input() -> Self::Input {
+                ::std::default::Default::default()
+            }
             fn update(&self, input: &$input) {
                 $({
                     let mut module = ::std::cell::RefCell::borrow_mut(&self.$mod_name);

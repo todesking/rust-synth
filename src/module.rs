@@ -2,7 +2,8 @@ use crate::WaveForm;
 use std::marker::PhantomData;
 
 pub trait Rack {
-    type Input;
+    type Input: crate::input::Input + 'static;
+    fn new_input() -> Self::Input;
     fn update(&self, input: &Self::Input);
 }
 pub trait Module<R: Rack> {
