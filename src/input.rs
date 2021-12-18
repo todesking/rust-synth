@@ -6,6 +6,11 @@ pub enum ButtonMode {
     Momentary,
 }
 
+#[derive(PartialEq, Eq, Hash, Clone)]
+pub enum Key {
+    ControlChange(u8),
+}
+
 pub enum InputConfig {
     F32 { name: String },
     Bool { name: String, mode: ButtonMode },
@@ -194,11 +199,6 @@ pub enum FieldAccessor<S> {
         Get<S, &'static str>,
         Box<dyn Fn(&mut S, &str) + Send + Sync>,
     ),
-}
-
-#[derive(PartialEq, Eq, Hash, Clone)]
-pub enum Key {
-    ControlChange(u8),
 }
 
 pub trait DefineField<S, T> {
