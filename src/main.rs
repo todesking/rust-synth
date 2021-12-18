@@ -12,7 +12,7 @@ use rustsynth::util::SyncError;
 use rustsynth::WaveForm;
 
 define_input! {
-    Input {
+    Rack1Input {
         vco1_freq: f32 = 0.5,
         vco1_waveform: WaveForm = (WaveForm::Sine),
         lfo1_freq: f32 = 0.5,
@@ -31,7 +31,7 @@ define_input! {
 }
 
 define_rack! {
-    MyRack: Rack<Input>(rack, input) {
+    Rack1: Rack<Rack1Input>(rack, input) {
         lfo1: VCO {
             in_freq: {input.lfo1_freq },
             in_waveform: { input.lfo1_waveform } ,
@@ -72,7 +72,7 @@ fn main() -> Result<()> {
     let cpal_device = setup_cpal_device()?;
     let cpal_config = setup_cpal_config(&cpal_device)?;
 
-    let rack = MyRack::new();
+    let rack = Rack1::new();
 
     run_synth(
         rack,
