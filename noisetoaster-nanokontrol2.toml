@@ -1,0 +1,39 @@
+[device]
+default = { input = "nanoKONTROL2 SLIDER/KNOB", output = "nanoKONTROL2 CTRL" }
+
+[rack]
+name = "NoiseToaster"
+
+[keys]
+lfo_freq = 0x00
+lfo_waveform = [
+  { key = 0x20, values = ["Sine", "Triangle"], out = 0x20 },
+  { key = 0x30, values = ["Sawtooth"], out = 0x30 },
+  { key = 0x40, values = ["Square", "Noise"], out = 0x40 },
+]
+
+areg_attack = 0x02
+areg_release = 0x03
+areg_repeat = { key = 0x32, mode = "toggle", out = 0x32 }
+areg_gate = { key = 0x42, mode = "momentary", out = 0x42 }
+
+vco_ar_mod = 0x11
+vco_ar_mod_enable = { key = 0x31, mode = "toggle", out = 0x31 }
+vco_lfo_mod = 0x12
+vco_freq = 0x01
+vco_waveform = [
+  { key = 0x21, values = ["Sine", "Triangle"], out = 0x21 },
+  { key = 0x31, values = ["Sawtooth"], out = 0x31 },
+  { key = 0x41, values = ["Square", "Noise"], out = 0x41 },
+]
+
+vcf_in_noise = { key = 0x46, mode = "toggle", out = 0x46 }
+vcf_cof = 0x04
+vcf_res = 0x14
+vcf_mod = 0x15
+vcf_mod_select = [
+  { key = 0x24, values = ["State0"], out = 0x24},
+  { key = 0x34, values = ["State1"], out = 0x34},
+  { key = 0x44, values = ["State2"], out = 0x44},
+]
+vca_bypass = { key = 0x45, mode = "toggle", out = 0x45 }

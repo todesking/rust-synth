@@ -2,7 +2,7 @@
 default = { input = "nanoKONTROL2 SLIDER/KNOB", output = "nanoKONTROL2 CTRL" }
 
 [rack]
-name = "MyRack"
+name = "Rack1"
 
 [keys]
 lfo1_freq = 0x00

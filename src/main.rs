@@ -9,6 +9,7 @@ use rustsynth::input::StateOutput;
 use rustsynth::midi_message::MidiMessage;
 use rustsynth::module::{Buf, Rack, EG, IIRLPF, VCO};
 use rustsynth::util::SyncError;
+use rustsynth::TriState;
 use rustsynth::WaveForm;
 
 define_input! {
@@ -65,6 +66,93 @@ define_rack! {
     }
 }
 
+define_input! {
+    NoiseToasterInput {
+        lfo_freq: f32,
+        lfo_waveform: WaveForm,
+        areg_attack: f32,
+        areg_release: f32,
+        areg_repeat: bool,
+        areg_gate: bool,
+        vco_ar_mod: f32,
+        vco_ar_mod_enable: bool,
+        vco_lfo_mod: f32,
+        vco_freq: f32,
+        vco_waveform: WaveForm,
+        // vco_sync: bool,
+        vcf_in_noise: bool,
+        vcf_cof: f32,
+        vcf_res: f32,
+        vcf_mod: f32,
+        vcf_mod_select: TriState,
+        vca_bypass: bool,
+    }
+}
+define_rack! {
+    NoiseToaster: Rack<NoiseToasterInput>(rack, input) {
+        white_noise: VCO {
+            in_freq: { 1.0 },
+            in_waveform: { WaveForm::Noise },
+            freq_min: 1.0,
+            freq_max: 44_100.0,
+        },
+        areg: EG {
+            in_gate: { input.areg_gate },
+            in_repeat: { input.areg_repeat },
+            in_a: { input.areg_attack },
+            in_d: { 0.0 },
+            in_s: { 1.0 },
+            in_r: { input.areg_release },
+        },
+        lfo: VCO {
+            in_freq: { input.lfo_freq },
+            in_waveform: { input.lfo_waveform },
+            freq_min: 0.1,
+            freq_max: 200.0,
+        },
+        vco: VCO {
+            in_freq: {
+                input.vco_freq
+                    + rack.areg.borrow().out * input.vco_ar_mod
+                    + rack.lfo.borrow().out * input.vco_lfo_mod
+            },
+            in_waveform: { input.vco_waveform },
+            freq_min: 100.0,
+            freq_max: 15_000.0,
+        },
+        vcf: IIRLPF {
+            in_freq: {
+                let x = input.vcf_cof;
+                let mod_source = match input.vcf_mod_select {
+                    TriState::State0 => 0.0,
+                    TriState::State1 => rack.lfo.borrow().out,
+                    TriState::State2 => rack.areg.borrow().out,
+                };
+                x + mod_source * input.vcf_mod
+            },
+            in_resonance: { input.vcf_res },
+            in_value: {
+                let mut x = rack.vco.borrow().out;
+                if input.vcf_in_noise {
+                    x += rack.white_noise.borrow().out;
+                }
+                x
+            },
+            freq_min: 100.0,
+            freq_max: 20_000.0,
+        },
+        vca: Buf {
+            in_value: {
+                if input.vca_bypass {
+                    rack.vcf.borrow().out
+                } else {
+                    rack.vcf.borrow().out * rack.areg.borrow().out
+                }
+            }
+        }
+    }
+}
+
 fn main() -> Result<()> {
     let midi_out_con = setup_midi_output_connection()?;
     let midi_in = setup_midi_input()?;
@@ -72,16 +160,36 @@ fn main() -> Result<()> {
     let cpal_device = setup_cpal_device()?;
     let cpal_config = setup_cpal_config(&cpal_device)?;
 
-    let rack = Rack1::new();
-
-    run_synth(
-        rack,
-        |r| r.lpf1.borrow().out,
-        midi_in,
-        midi_out_con,
-        cpal_device,
-        cpal_config,
-    )?;
+    let config = rustsynth::config::load_config("noisetoaster-nanokontrol2.toml")?;
+    match &*config.rack_name {
+        "Rack1" => {
+            let rack = Rack1::new();
+            run_synth(
+                rack,
+                |r| r.lpf1.borrow().out,
+                midi_in,
+                midi_out_con,
+                cpal_device,
+                cpal_config,
+                config,
+            )?;
+        }
+        "NoiseToaster" => {
+            let rack = NoiseToaster::new();
+            run_synth(
+                rack,
+                |r| r.vca.borrow().out,
+                midi_in,
+                midi_out_con,
+                cpal_device,
+                cpal_config,
+                config,
+            )?;
+        }
+        _ => {
+            return Err(anyhow::anyhow!("Undefined rack name: {}", config.rack_name));
+        }
+    }
     Ok(())
 }
 
@@ -176,6 +284,7 @@ fn run_synth<R: Rack + Send + 'static>(
     mut midi_out: midir::MidiOutputConnection,
     device: cpal::Device,
     stream_config: cpal::StreamConfig,
+    config: rustsynth::config::Config,
 ) -> Result<()> {
     let input = std::sync::Arc::new(std::sync::Mutex::new(R::new_input()));
     let port = &midi_in.ports()[0];
@@ -185,7 +294,6 @@ fn run_synth<R: Rack + Send + 'static>(
         use rustsynth::input::Input;
         R::Input::new_state_definition()
     };
-    let config = rustsynth::config::load_config("nanokontrol2.toml")?;
     let (mut state_in, mut state_out) = state_definition.into_io();
     rustsynth::config::setup_state_io(&config, &mut state_in, &mut state_out)?;
     dbg!(&state_in);

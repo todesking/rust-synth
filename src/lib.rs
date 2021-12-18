@@ -13,6 +13,20 @@ where
     fn from_name(name: &str) -> Option<Self>;
     fn to_name(&self) -> &'static str;
 }
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum WaveForm {
+    Sine,
+    Sawtooth,
+    Triangle,
+    Square,
+    Noise,
+}
+impl Default for WaveForm {
+    fn default() -> WaveForm {
+        WaveForm::Sine
+    }
+}
 impl SimpleEnum for WaveForm {
     fn from_name(name: &str) -> Option<Self> {
         match name {
@@ -36,15 +50,30 @@ impl SimpleEnum for WaveForm {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum WaveForm {
-    Sine,
-    Sawtooth,
-    Triangle,
-    Square,
-    Noise,
+pub enum TriState {
+    State0,
+    State1,
+    State2,
 }
-impl Default for WaveForm {
-    fn default() -> WaveForm {
-        WaveForm::Sine
+impl Default for TriState {
+    fn default() -> Self {
+        Self::State0
+    }
+}
+impl SimpleEnum for TriState {
+    fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "State0" => Some(Self::State0),
+            "State1" => Some(Self::State1),
+            "State2" => Some(Self::State2),
+            _ => None,
+        }
+    }
+    fn to_name(&self) -> &'static str {
+        match self {
+            Self::State0 => "State0",
+            Self::State1 => "State1",
+            Self::State2 => "State2",
+        }
     }
 }

@@ -237,7 +237,6 @@ fn buf_at(buf: &[f32], i: usize, n: usize) -> f32 {
         buf[buf.len() + i - 1 - n]
     }
 }
-
 impl<R: Rack> Default for IIRLPF<R> {
     fn default() -> Self {
         IIRLPF {
@@ -264,7 +263,7 @@ impl<R: Rack> Module<R> for IIRLPF<R> {
         let freq = restore_freq(self.freq_min, self.freq_max, in_freq);
 
         let fc = freq / SAMPLES_PER_SEC as f32;
-        let q = (0.5 + in_resonance * 9.5) / 2.0f32.sqrt();
+        let q = (0.025 + in_resonance * 9.975) / 2.0f32.sqrt();
         use std::f32::consts::PI;
         // reference: 青木直史. サウンドプログラミング入門. 技術評論社, 2018
         let a0 = 1.0 + 2.0 * PI * fc / q + 4.0 * PI * PI * fc * fc;

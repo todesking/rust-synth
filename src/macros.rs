@@ -47,10 +47,11 @@ macro_rules! define_input {
 
 #[macro_export]
 macro_rules! define_rack_field_value {
-    ($param_rack:ident, $ty_rack:ident, $param_input:ident, $ty_input:ident, { $expr:expr }) => {
+    ($param_rack:ident, $ty_rack:ident, $param_input:ident, $ty_input:ident, { $($stmt:stmt)* }) => {
         ::std::boxed::Box::new(
             #[allow(unused_variables)]
-            |$param_rack: &$ty_rack, $param_input: &$ty_input| $expr,
+            #[allow(redundant_semicolons)]
+            |$param_rack: &$ty_rack, $param_input: &$ty_input| { $($stmt)* },
         )
     };
     ($param_rack:ident, $ty_rack:ident, $param_input:ident, $ty_input:ident, $expr:expr) => {
