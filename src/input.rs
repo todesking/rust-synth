@@ -1,34 +1,5 @@
-use crate::WaveForm;
+use crate::SimpleEnum;
 use anyhow::Result;
-
-pub trait SimpleEnum
-where
-    Self: Sized,
-{
-    fn from_name(name: &str) -> Option<Self>;
-    fn to_name(&self) -> &'static str;
-}
-impl SimpleEnum for WaveForm {
-    fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "Sine" => Some(WaveForm::Sine),
-            "Triangle" => Some(WaveForm::Triangle),
-            "Sawtooth" => Some(WaveForm::Sawtooth),
-            "Square" => Some(WaveForm::Square),
-            "Noise" => Some(WaveForm::Noise),
-            _ => None,
-        }
-    }
-    fn to_name(&self) -> &'static str {
-        match self {
-            WaveForm::Sine => "Sine",
-            WaveForm::Triangle => "Triangle",
-            WaveForm::Sawtooth => "Sawtooth",
-            WaveForm::Square => "Square",
-            WaveForm::Noise => "Noise",
-        }
-    }
-}
 
 pub enum ButtonMode {
     Toggle,
@@ -301,50 +272,4 @@ impl<S, E: SimpleEnum> DefineField<S, E> for StateDefinition<S> {
             ),
         )
     }
-}
-
-#[macro_export]
-macro_rules! define_input_field_default {
-    () => {
-        ::std::default::Default::default()
-    };
-    ($expr:expr) => {
-        $expr
-    };
-}
-#[macro_export]
-macro_rules! define_input {
-    ($name:ident {
-        $($field:ident : $ty:ty $(= $default_value:tt)?),*$(,)?
-    }) => {
-        #[derive(Clone, Debug)]
-        pub struct $name {
-            $(
-                pub $field: $ty
-            ),*
-        }
-        impl $name {
-            pub fn new_state_definition() -> $crate::input::StateDefinition<Self> {
-                let mut key_mapping = $crate::input::StateDefinition::<$name>::new();
-                $(
-                    $crate::input::DefineField::<$name, $ty>::define_field(
-                        &mut key_mapping,
-                        stringify!($field).to_owned(),
-                        |input| &input.$field,
-                        |input, value| input.$field = value
-                    );
-                )*
-                key_mapping
-            }
-        }
-        impl ::std::default::Default for $name {
-            fn default() -> $name {
-                $name {
-                    $(
-                        $field: $crate::define_input_field_default!($($default_value)?)
-                    ),*
-                }
-            }
-        }
-    };
 }

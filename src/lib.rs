@@ -1,4 +1,5 @@
 pub mod input;
+pub mod macros;
 pub mod midi_message;
 pub mod nanokontrol2;
 pub mod util;
@@ -327,6 +328,35 @@ impl<R: Rack> Module<R> for Buf<R> {
     }
 }
 
+pub trait SimpleEnum
+where
+    Self: Sized,
+{
+    fn from_name(name: &str) -> Option<Self>;
+    fn to_name(&self) -> &'static str;
+}
+impl SimpleEnum for WaveForm {
+    fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "Sine" => Some(WaveForm::Sine),
+            "Triangle" => Some(WaveForm::Triangle),
+            "Sawtooth" => Some(WaveForm::Sawtooth),
+            "Square" => Some(WaveForm::Square),
+            "Noise" => Some(WaveForm::Noise),
+            _ => None,
+        }
+    }
+    fn to_name(&self) -> &'static str {
+        match self {
+            WaveForm::Sine => "Sine",
+            WaveForm::Triangle => "Triangle",
+            WaveForm::Sawtooth => "Sawtooth",
+            WaveForm::Square => "Square",
+            WaveForm::Noise => "Noise",
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum WaveForm {
     Sine,
@@ -339,51 +369,4 @@ impl Default for WaveForm {
     fn default() -> WaveForm {
         WaveForm::Sine
     }
-}
-
-#[macro_export]
-macro_rules! define_rack_field_value {
-    ($param_rack:ident, $ty_rack:ident, $param_input:ident, $ty_input:ident, { $expr:expr }) => {
-        ::std::boxed::Box::new(
-            #[allow(unused_variables)]
-            |$param_rack: &$ty_rack, $param_input: &$ty_input| $expr,
-        )
-    };
-    ($param_rack:ident, $ty_rack:ident, $param_input:ident, $ty_input:ident, $expr:expr) => {
-        $expr
-    };
-}
-
-#[macro_export]
-macro_rules! define_rack {
-    ($rack_name:ident : Rack<$input:ident>($param_rack:ident, $param_input:ident) {$(
-        $mod_name:ident : $mod_type:ident {$(
-            $field_name:ident : $field_value:tt
-        ),*$(,)?}
-    ),*$(,)?}) => {
-        pub struct $rack_name {
-            $(pub $mod_name: ::std::cell::RefCell<$mod_type<$rack_name>> ),*
-        }
-        impl $rack_name {
-            pub fn new() -> $rack_name {
-                $rack_name {
-                    $($mod_name: ::std::cell::RefCell::new(
-                        $mod_type {
-                            $($field_name: $crate::define_rack_field_value!($param_rack, $rack_name, $param_input, $input, $field_value)),*
-                            ,..::std::default::Default::default()
-                        }
-                    )),*
-                }
-            }
-        }
-        impl ::rustsynth::Rack for $rack_name {
-            type Input = $input;
-            fn update(&self, input: &$input) {
-                $({
-                    let mut module = ::std::cell::RefCell::borrow_mut(&self.$mod_name);
-                    ::rustsynth::Module::update(&mut *module, self, input);
-                })*
-            }
-        }
-    };
 }
