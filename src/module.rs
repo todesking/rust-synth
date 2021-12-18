@@ -9,8 +9,8 @@ pub trait Module<R: Rack> {
     fn update(&mut self, rack: &R, input: &R::Input);
 }
 
-pub trait InPort<R: Rack, T>: Fn(&R, &R::Input) -> T + std::marker::Send {}
-impl<R: Rack, T, F: Fn(&R, &R::Input) -> T + std::marker::Send> InPort<R, T> for F {}
+#[allow(type_alias_bounds)]
+type In<R: Rack, T> = Box<dyn Fn(&R, &R::Input) -> T + Send>;
 
 const SAMPLES_PER_SEC: u32 = 44_100;
 
@@ -21,8 +21,8 @@ pub fn restore_freq(min: f32, max: f32, input: f32) -> f32 {
 pub struct VCO<R: Rack> {
     pub _rack: PhantomData<R>,
     // range: 0.0 - 1.0 ( freq_min Hz - freq_max Hz )
-    pub in_freq: Box<dyn InPort<R, f32>>,
-    pub in_waveform: Box<dyn InPort<R, WaveForm>>,
+    pub in_freq: In<R, f32>,
+    pub in_waveform: In<R, WaveForm>,
     pub phase: f32,
     pub freq_min: f32,
     pub freq_max: f32,
@@ -91,16 +91,16 @@ impl<R: Rack> Module<R> for VCO<R> {
 
 pub struct EG<R: Rack> {
     pub _rack: PhantomData<R>,
-    pub in_gate: Box<dyn InPort<R, bool>>,
-    pub in_repeat: Box<dyn InPort<R, bool>>,
+    pub in_gate: In<R, bool>,
+    pub in_repeat: In<R, bool>,
     /// sec
-    pub in_a: Box<dyn InPort<R, f32>>,
+    pub in_a: In<R, f32>,
     /// sec
-    pub in_d: Box<dyn InPort<R, f32>>,
+    pub in_d: In<R, f32>,
     /// 0.0 - 1.0
-    pub in_s: Box<dyn InPort<R, f32>>,
+    pub in_s: In<R, f32>,
     /// sec
-    pub in_r: Box<dyn InPort<R, f32>>,
+    pub in_r: In<R, f32>,
     pub clock: f32,
     pub state: EGState,
     pub level: f32,
@@ -216,10 +216,10 @@ impl<R: Rack> Module<R> for EG<R> {
 pub struct IIRLPF<R: Rack> {
     pub _rack: PhantomData<R>,
     /// 0.0 - 1.0
-    pub in_freq: Box<dyn InPort<R, f32>>,
+    pub in_freq: In<R, f32>,
     /// 0.0 - 1.0
-    pub in_resonance: Box<dyn InPort<R, f32>>,
-    pub in_value: Box<dyn InPort<R, f32>>,
+    pub in_resonance: In<R, f32>,
+    pub in_value: In<R, f32>,
     pub freq_min: f32,
     pub freq_max: f32,
     pub buf_a: Vec<f32>,
@@ -305,7 +305,7 @@ impl<R: Rack> Module<R> for IIRLPF<R> {
 
 pub struct Buf<R: Rack> {
     pub _rack: PhantomData<R>,
-    pub in_value: Box<dyn InPort<R, f32>>,
+    pub in_value: In<R, f32>,
     pub out: f32,
 }
 impl<R: Rack> Default for Buf<R> {
