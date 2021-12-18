@@ -779,6 +779,7 @@ dependencies = [
  "cpal",
  "midir",
  "rand",
+ "toml",
 ]
 
 [[package]]

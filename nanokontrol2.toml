@@ -1,0 +1,33 @@
+[device]
+default = { input = "nanoKONTROL2 SLIDER/KNOB", output = "nanoKONTROL2 CTRL" }
+
+[rack]
+name = "MyRack"
+
+[keys]
+lfo1_freq = 0x00
+lfo1_waveform = [
+  { key = 0x20, values = ["Sine", "Triangle"], out = 0x20 },
+  { key = 0x30, values = ["Sawtooth"], out = 0x30 },
+  { key = 0x40, values = ["Square", "Noise"], out = 0x40 },
+]
+
+vco1_freq = 0x01
+vco1_waveform = [
+  { key = 0x21, values = ["Sine", "Triangle"], out = 0x21 },
+  { key = 0x31, values = ["Sawtooth"], out = 0x31 },
+  { key = 0x41, values = ["Square", "Noise"], out = 0x41 },
+]
+vco1_lfo1_amount = 0x10
+
+eg1_a = 0x02
+eg1_d = 0x12
+eg1_s = 0x03
+eg1_r = 0x13
+eg1_repeat = { key = 0x32, mode = "toggle", out = 0x32 }
+eg1_gate = { key = 0x42, mode = "momentary", out = 0x42 }
+
+lpf1_freq = 0x04
+lpf1_resonance = 0x14
+lpf1_lfo1_amount = 0x15
+

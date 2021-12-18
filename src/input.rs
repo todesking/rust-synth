@@ -1,16 +1,25 @@
 use crate::SimpleEnum;
 use anyhow::Result;
 
+#[derive(Debug)]
 pub enum ButtonMode {
     Toggle,
     Momentary,
 }
 
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Key {
     ControlChange(u8),
 }
 
+#[derive(Debug)]
+pub enum FieldType {
+    F32,
+    Bool,
+    Enum,
+}
+
+#[derive(Debug)]
 pub enum InputConfig {
     F32 { name: String },
     Bool { name: String, mode: ButtonMode },
@@ -26,6 +35,7 @@ impl InputConfig {
     }
 }
 
+#[derive(Debug)]
 pub enum OutputConfig {
     Bool {
         name: String,
@@ -46,6 +56,7 @@ impl OutputConfig {
     }
 }
 
+#[derive(Debug)]
 pub struct StateDefinition<S> {
     accessors: std::collections::HashMap<String, FieldAccessor<S>>,
 }
@@ -56,10 +67,12 @@ impl<S> Default for StateDefinition<S> {
         }
     }
 }
+#[derive(Debug)]
 pub struct StateInput<S> {
     state_definition: std::sync::Arc<StateDefinition<S>>,
     inputs: std::collections::HashMap<Key, InputConfig>,
 }
+#[derive(Debug)]
 pub struct StateOutput<S> {
     state_definition: std::sync::Arc<StateDefinition<S>>,
     outputs: Vec<OutputConfig>,
@@ -85,6 +98,13 @@ impl<S> StateDefinition<S> {
             .get(name)
             .unwrap_or_else(|| panic!("Undefined field: {}", name))
     }
+    pub fn field_type(&self, name: &str) -> Option<FieldType> {
+        self.accessors.get(name).map(|a| match a {
+            FieldAccessor::Bool(..) => FieldType::Bool,
+            FieldAccessor::F32(..) => FieldType::F32,
+            FieldAccessor::Enum(..) => FieldType::Enum,
+        })
+    }
 }
 impl<S> StateInput<S> {
     pub fn new(state_definition: std::sync::Arc<StateDefinition<S>>) -> StateInput<S> {
@@ -92,6 +112,9 @@ impl<S> StateInput<S> {
             state_definition,
             inputs: std::collections::HashMap::new(),
         }
+    }
+    pub fn field_type(&self, name: &str) -> Option<FieldType> {
+        self.state_definition.field_type(name)
     }
     pub fn define_input(&mut self, key: Key, input: InputConfig) {
         self.state_definition.assert_has_field(input.name());
@@ -199,6 +222,21 @@ pub enum FieldAccessor<S> {
         Get<S, &'static str>,
         Box<dyn Fn(&mut S, &str) + Send + Sync>,
     ),
+}
+impl<S> std::fmt::Debug for FieldAccessor<S> {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        match self {
+            FieldAccessor::F32(..) => fmt
+                .debug_struct("FieldAccessor::F32")
+                .finish_non_exhaustive(),
+            FieldAccessor::Bool(..) => fmt
+                .debug_struct("FieldAccessor::Bool")
+                .finish_non_exhaustive(),
+            FieldAccessor::Enum(..) => fmt
+                .debug_struct("FieldAccessor::Enum")
+                .finish_non_exhaustive(),
+        }
+    }
 }
 
 pub trait DefineField<S, T> {

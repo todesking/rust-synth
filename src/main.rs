@@ -4,7 +4,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use rustsynth::define_input;
 use rustsynth::define_rack;
-use rustsynth::input::{ButtonMode, Key};
+use rustsynth::input::{ButtonMode, FieldType, Key};
 use rustsynth::input::{InputConfig, OutputConfig, StateInput, StateOutput};
 use rustsynth::midi_message::MidiMessage;
 use rustsynth::module::{Buf, Rack, EG, IIRLPF, VCO};
@@ -29,163 +29,183 @@ define_input! {
         lpf1_lfo1_amount: f32 = 0.0,
     }
 }
-fn setup_input<S>(state_in: &mut StateInput<S>) {
-    state_in.define_input(
-        Key::ControlChange(0x00),
-        InputConfig::F32 {
-            name: "lfo1_freq".to_owned(),
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x01),
-        InputConfig::F32 {
-            name: "vco1_freq".to_owned(),
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x10),
-        InputConfig::F32 {
-            name: "vco1_lfo1_amount".to_owned(),
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x02),
-        InputConfig::F32 {
-            name: "eg1_a".to_owned(),
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x12),
-        InputConfig::F32 {
-            name: "eg1_d".to_owned(),
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x03),
-        InputConfig::F32 {
-            name: "eg1_s".to_owned(),
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x13),
-        InputConfig::F32 {
-            name: "eg1_r".to_owned(),
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x04),
-        InputConfig::F32 {
-            name: "lpf1_freq".to_owned(),
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x14),
-        InputConfig::F32 {
-            name: "lpf1_resonance".to_owned(),
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x15),
-        InputConfig::F32 {
-            name: "lpf1_lfo1_amount".to_owned(),
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x20),
-        InputConfig::Enum {
-            name: "lfo1_waveform".to_owned(),
-            values: vec!["Sine".to_owned(), "Triangle".to_owned()],
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x30),
-        InputConfig::Enum {
-            name: "lfo1_waveform".to_owned(),
-            values: vec!["Sawtooth".to_owned()],
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x40),
-        InputConfig::Enum {
-            name: "lfo1_waveform".to_owned(),
-            values: vec!["Square".to_owned(), "Noise".to_owned()],
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x21),
-        InputConfig::Enum {
-            name: "vco1_waveform".to_owned(),
-            values: vec!["Sine".to_owned(), "Triangle".to_owned()],
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x31),
-        InputConfig::Enum {
-            name: "vco1_waveform".to_owned(),
-            values: vec!["Sawtooth".to_owned()],
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x41),
-        InputConfig::Enum {
-            name: "vco1_waveform".to_owned(),
-            values: vec!["Square".to_owned(), "Noise".to_owned()],
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x32),
-        InputConfig::Bool {
-            name: "eg1_repeat".to_owned(),
-            mode: ButtonMode::Toggle,
-        },
-    );
-    state_in.define_input(
-        Key::ControlChange(0x42),
-        InputConfig::Bool {
-            name: "eg1_gate".to_owned(),
-            mode: ButtonMode::Momentary,
-        },
-    );
+
+#[derive(Debug)]
+struct Config {
+    midi_in_name: Option<String>,
+    midi_out_name: Option<String>,
+    rack_name: String,
+    keys: toml::map::Map<String, toml::value::Value>,
 }
-fn setup_output<S>(state_out: &mut StateOutput<S>) {
-    state_out.define_output(OutputConfig::Enum {
-        name: "lfo1_waveform".to_owned(),
-        values: vec!["Sine".to_owned(), "Triangle".to_owned()],
-        out: Key::ControlChange(0x20),
-    });
-    state_out.define_output(OutputConfig::Enum {
-        name: "lfo1_waveform".to_owned(),
-        values: vec!["Sawtooth".to_owned()],
-        out: Key::ControlChange(0x30),
-    });
-    state_out.define_output(OutputConfig::Enum {
-        name: "lfo1_waveform".to_owned(),
-        values: vec!["Square".to_owned(), "Noise".to_owned()],
-        out: Key::ControlChange(0x40),
-    });
-    state_out.define_output(OutputConfig::Enum {
-        name: "vco1_waveform".to_owned(),
-        values: vec!["Sine".to_owned(), "Triangle".to_owned()],
-        out: Key::ControlChange(0x21),
-    });
-    state_out.define_output(OutputConfig::Enum {
-        name: "vco1_waveform".to_owned(),
-        values: vec!["Sawtooth".to_owned()],
-        out: Key::ControlChange(0x31),
-    });
-    state_out.define_output(OutputConfig::Enum {
-        name: "vco1_waveform".to_owned(),
-        values: vec!["Square".to_owned(), "Noise".to_owned()],
-        out: Key::ControlChange(0x41),
-    });
-    state_out.define_output(OutputConfig::Bool {
-        name: "eg1_gate".to_owned(),
-        out: Key::ControlChange(0x42),
-    });
-    state_out.define_output(OutputConfig::Bool {
-        name: "eg1_repeat".to_owned(),
-        out: Key::ControlChange(0x32),
-    });
+fn load_config(path: &str) -> Result<Config> {
+    use std::io::Read;
+    use toml::Value;
+
+    let mut file = std::fs::File::open(path)?;
+    let mut content = String::new();
+    file.read_to_string(&mut content)?;
+    let parsed = content.parse::<Value>()?;
+    let midi_in_name = parsed.get("default").and_then(|d| d.get("input"));
+    let midi_in_name = match midi_in_name {
+        Some(x) => Some(
+            x.as_str()
+                .context("Type error at default.input")?
+                .to_owned(),
+        ),
+        None => None,
+    };
+    let midi_out_name = parsed.get("default").and_then(|d| d.get("output"));
+    let midi_out_name = match midi_out_name {
+        Some(x) => Some(
+            x.as_str()
+                .context("Type error at default.output")?
+                .to_owned(),
+        ),
+        None => None,
+    };
+    let rack_name = parsed
+        .get("rack")
+        .and_then(|d| d.get("name"))
+        .context("rack.name is not defined")?
+        .as_str()
+        .context("Type error at rack.name")?
+        .to_owned();
+    let keys = parsed
+        .get("keys")
+        .and_then(|d| d.as_table())
+        .map(|d| d.clone())
+        .unwrap_or_else(|| toml::map::Map::new());
+    Ok(Config {
+        midi_in_name,
+        midi_out_name,
+        rack_name,
+        keys,
+    })
+}
+
+fn build_state_io_from_config<S>(
+    config: &Config,
+    state_in: &mut StateInput<S>,
+    state_out: &mut StateOutput<S>,
+) -> Result<()> {
+    for (name, value) in config.keys.iter() {
+        match state_in.field_type(name) {
+            None => {
+                anyhow::bail!("Field not defined: {}", name);
+            }
+            Some(FieldType::F32) => {
+                let key = value
+                    .as_integer()
+                    .ok_or_else(|| anyhow::anyhow!("Type error at keys.{}", name))?;
+                let key = Key::ControlChange(key as u8);
+                state_in.define_input(
+                    key,
+                    InputConfig::F32 {
+                        name: name.to_owned(),
+                    },
+                )
+            }
+            Some(FieldType::Bool) => {
+                let value = value
+                    .as_table()
+                    .ok_or_else(|| anyhow::anyhow!("Type error at keys.{}", name))?;
+                let key = match value.get("key") {
+                    None => None,
+                    Some(x) => Some(
+                        x.as_integer()
+                            .ok_or_else(|| anyhow::anyhow!("Type error at keys.{}.key", name))?,
+                    ),
+                };
+                let key = key.map(|x| Key::ControlChange(x as u8));
+                if let Some(key) = key {
+                    let mode = match value.get("mode") {
+                        Some(toml::value::Value::String(s)) => match s.as_ref() {
+                            "toggle" => ButtonMode::Toggle,
+                            "momentary" => ButtonMode::Momentary,
+                            _ => return Err(anyhow::anyhow!("Invalid mode at keys.{}.mode", name)),
+                        },
+                        Some(_) => return Err(anyhow::anyhow!("Type error at keys.{}.mode", name)),
+                        None => return Err(anyhow::anyhow!("keys.{}.mode required", name)),
+                    };
+                    state_in.define_input(
+                        key,
+                        InputConfig::Bool {
+                            name: name.to_owned(),
+                            mode,
+                        },
+                    );
+                }
+                let out = match value.get("out") {
+                    Some(toml::value::Value::Integer(n)) => Some(Key::ControlChange(*n as u8)),
+                    Some(_) => return Err(anyhow::anyhow!("Type error at keys.{}.out", name)),
+                    None => None,
+                };
+                if let Some(out) = out {
+                    state_out.define_output(OutputConfig::Bool {
+                        name: name.to_owned(),
+                        out,
+                    });
+                }
+            }
+            Some(FieldType::Enum) => {
+                let value = value
+                    .as_array()
+                    .ok_or_else(|| anyhow::anyhow!("Type error at keys.{}", name))?;
+                for (i, v) in value.iter().enumerate() {
+                    let v = v
+                        .as_table()
+                        .ok_or_else(|| anyhow::anyhow!("Type error at keys.{}[{}]", name, i))?;
+                    let key = v.get("key");
+                    let key = match key.map(|x| x.as_integer()) {
+                        Some(Some(v)) => Some(Key::ControlChange(v as u8)),
+                        Some(None) => {
+                            return Err(anyhow::anyhow!("Type error at keys.{}[{}].key", name, i))
+                        }
+                        None => None,
+                    };
+                    let out = v.get("out");
+                    let out = match out.map(|x| x.as_integer()) {
+                        Some(Some(v)) => Some(Key::ControlChange(v as u8)),
+                        Some(None) => {
+                            return Err(anyhow::anyhow!("Type error at keys.{}[{}].out", name, i))
+                        }
+                        None => None,
+                    };
+                    let values = v
+                        .get("values")
+                        .ok_or_else(|| anyhow::anyhow!("Required: keys.{}[{}].values", name, i))?
+                        .as_array()
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("Type error at keys.{}[{}].values", name, i)
+                        })?;
+                    let values = values
+                        .iter()
+                        .map(|x| x.as_str().map(|x| x.to_owned()))
+                        .collect::<Option<Vec<_>>>()
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("Type error at keys.{}.[{}].values", name, i)
+                        })?;
+                    if let Some(key) = key {
+                        state_in.define_input(
+                            key,
+                            InputConfig::Enum {
+                                name: name.to_owned(),
+                                values: values.clone(),
+                            },
+                        );
+                    }
+                    if let Some(out) = out {
+                        state_out.define_output(OutputConfig::Enum {
+                            name: name.to_owned(),
+                            values,
+                            out,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 define_rack! {
@@ -326,7 +346,7 @@ fn run_synth(
     midi_in: midir::MidiInput,
     mut midi_out: midir::MidiOutputConnection,
     device: cpal::Device,
-    config: cpal::StreamConfig,
+    stream_config: cpal::StreamConfig,
 ) -> Result<()> {
     let input = std::sync::Arc::new(std::sync::Mutex::new(Input {
         ..Default::default()
@@ -335,9 +355,12 @@ fn run_synth(
     let port_name = midi_in.port_name(port)?;
     println!("Connect to {}", &port_name);
     let state_definition = Input::new_state_definition();
+    let config = load_config("nanokontrol2.toml")?;
     let (mut state_in, mut state_out) = state_definition.into_io();
-    setup_input(&mut state_in);
-    setup_output(&mut state_out);
+    build_state_io_from_config(&config, &mut state_in, &mut state_out)?;
+    dbg!(&state_in);
+    dbg!(&state_out);
+    // setup_state_io(&mut state_in, &mut state_out)?;
     output(&state_out, &*input.lock().unwrap(), &mut midi_out)?;
     let _in_con = midi_in
         .connect(
@@ -374,7 +397,7 @@ fn run_synth(
 
     let rack = MyRack::new();
     let stream = device.build_output_stream(
-        &config,
+        &stream_config,
         {
             let input = std::sync::Arc::clone(&input);
             move |data: &mut [f32], _| {
