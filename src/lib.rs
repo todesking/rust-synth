@@ -1,3 +1,4 @@
+pub mod config;
 pub mod input;
 pub mod macros;
 pub mod midi_message;
