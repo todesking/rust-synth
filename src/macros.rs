@@ -80,12 +80,12 @@ macro_rules! define_rack {
                 }
             }
         }
-        impl ::rustsynth::Rack for $rack_name {
+        impl $crate::module::Rack for $rack_name {
             type Input = $input;
             fn update(&self, input: &$input) {
                 $({
                     let mut module = ::std::cell::RefCell::borrow_mut(&self.$mod_name);
-                    ::rustsynth::Module::update(&mut *module, self, input);
+                    $crate::module::Module::update(&mut *module, self, input);
                 })*
             }
         }

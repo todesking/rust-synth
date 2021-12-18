@@ -7,9 +7,9 @@ use rustsynth::define_rack;
 use rustsynth::input::{ButtonMode, Key};
 use rustsynth::input::{InputConfig, OutputConfig, StateInput, StateOutput};
 use rustsynth::midi_message::MidiMessage;
+use rustsynth::module::{Buf, Rack, EG, IIRLPF, VCO};
 use rustsynth::util::SyncError;
 use rustsynth::WaveForm;
-use rustsynth::{Buf, Rack, EG, IIRLPF, VCO};
 
 define_input! {
     Input {
