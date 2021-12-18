@@ -290,13 +290,13 @@ impl<R: Rack> Module<R> for IIRLPF<R> {
         self.i_b %= self.buf_b.len();
 
         let mut b_value = 0.0;
-        for m in 0..=2 {
-            b_value += b[m] * buf_at(&self.buf_b, self.i_b, m);
+        for (m, x) in b.iter().enumerate() {
+            b_value += x * buf_at(&self.buf_b, self.i_b, m);
         }
 
         let mut a_value = b_value;
-        for m in 1..=2 {
-            a_value += -a[m] * buf_at(&self.buf_a, self.i_a, m - 1);
+        for (m, x) in a.iter().enumerate().skip(1) {
+            a_value += -x * buf_at(&self.buf_a, self.i_a, m - 1);
         }
 
         self.buf_a[self.i_a] = a_value;

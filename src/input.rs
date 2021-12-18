@@ -73,6 +73,13 @@ impl OutputConfig {
 pub struct StateDefinition<S> {
     accessors: std::collections::HashMap<String, FieldAccessor<S>>,
 }
+impl<S> Default for StateDefinition<S> {
+    fn default() -> Self {
+        Self {
+            accessors: std::collections::HashMap::new(),
+        }
+    }
+}
 pub struct StateInput<S> {
     state_definition: std::sync::Arc<StateDefinition<S>>,
     inputs: std::collections::HashMap<Key, InputConfig>,
@@ -83,13 +90,11 @@ pub struct StateOutput<S> {
 }
 impl<S> StateDefinition<S> {
     pub fn new() -> Self {
-        Self {
-            accessors: std::collections::HashMap::new(),
-        }
+        Default::default()
     }
     pub fn into_io(self) -> (StateInput<S>, StateOutput<S>) {
         let sd = std::sync::Arc::new(self);
-        (StateInput::new(sd.clone()), StateOutput::new(sd.clone()))
+        (StateInput::new(sd.clone()), StateOutput::new(sd))
     }
     pub fn define_field(&mut self, name: String, accessor: FieldAccessor<S>) {
         self.accessors.insert(name, accessor);

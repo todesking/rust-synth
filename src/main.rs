@@ -317,7 +317,7 @@ fn output<S>(
     state: &S,
     midi_out: &mut midir::MidiOutputConnection,
 ) -> Result<()> {
-    state_out.output(&state, |key, on| match key {
+    state_out.output(state, |key, on| match key {
         Key::ControlChange(num) => set_led(midi_out, *num, on),
     })
 }
@@ -353,15 +353,12 @@ fn run_synth(
                             println!("Message: {:0X?}", message);
                             let input = {
                                 let mut input = input.lock().unwrap();
-                                match message {
-                                    MidiMessage::ControlChange { ch: 0, num, value } => {
-                                        state_in.update_state(
-                                            &mut input,
-                                            Key::ControlChange(num),
-                                            value,
-                                        );
-                                    }
-                                    _ => {}
+                                if let MidiMessage::ControlChange { ch: 0, num, value } = message {
+                                    state_in.update_state(
+                                        &mut input,
+                                        Key::ControlChange(num),
+                                        value,
+                                    );
                                 }
                                 input.clone()
                             };
