@@ -154,13 +154,13 @@ define_rack! {
 }
 
 fn main() -> Result<()> {
-    let midi_out_con = setup_midi_output_connection()?;
-    let midi_in = setup_midi_input()?;
+    let config = rustsynth::config::load_config("noisetoaster-nanokontrol2.toml")?;
+    let midi_out_con = setup_midi_output_connection(&config.midi_out_name)?;
+    let (midi_in, midi_in_port) = setup_midi_input(&config.midi_in_name)?;
 
     let cpal_device = setup_cpal_device()?;
     let cpal_config = setup_cpal_config(&cpal_device)?;
 
-    let config = rustsynth::config::load_config("noisetoaster-nanokontrol2.toml")?;
     match &*config.rack_name {
         "Rack1" => {
             let rack = Rack1::new();
@@ -168,6 +168,7 @@ fn main() -> Result<()> {
                 rack,
                 |r| r.lpf1.borrow().out,
                 midi_in,
+                midi_in_port,
                 midi_out_con,
                 cpal_device,
                 cpal_config,
@@ -180,6 +181,7 @@ fn main() -> Result<()> {
                 rack,
                 |r| r.vca.borrow().out,
                 midi_in,
+                midi_in_port,
                 midi_out_con,
                 cpal_device,
                 cpal_config,
@@ -201,21 +203,43 @@ fn list_available_midi_ports<T: midir::MidiIO>(io: &T, kind: &str) -> Result<()>
     Ok(())
 }
 
-fn setup_midi_output_connection() -> Result<midir::MidiOutputConnection> {
+fn setup_midi_output_connection(name: &Option<String>) -> Result<midir::MidiOutputConnection> {
     let output = midir::MidiOutput::new("midir")?;
     list_available_midi_ports(&output, "output")?;
-    let port = &output.ports()[0];
+    let ports = output.ports();
+    let port = if let Some(name) = name {
+        ports
+            .iter()
+            .find(|p| output.port_name(p).as_ref() == Ok(name))
+            .ok_or_else(|| anyhow::anyhow!("Midi output not found: {}", name))?
+    } else if output.ports().is_empty() {
+        return Err(anyhow::anyhow!("Midi output not found"));
+    } else {
+        &ports[0]
+    };
     let port_name = output.port_name(port)?;
-    let out_con = output.connect(port, &port_name).map_err(SyncError::new)?;
     println!("Using device {}", port_name);
+    let out_con = output.connect(port, &port_name).map_err(SyncError::new)?;
     Ok(out_con)
 }
 
-fn setup_midi_input() -> Result<midir::MidiInput> {
+fn setup_midi_input(name: &Option<String>) -> Result<(midir::MidiInput, midir::MidiInputPort)> {
     let mut input = midir::MidiInput::new("midi_input")?;
     list_available_midi_ports(&input, "input")?;
+    let ports = input.ports();
+    let port = if let Some(name) = name {
+        ports
+            .iter()
+            .find(|p| input.port_name(p).as_ref() == Ok(name))
+            .ok_or_else(|| anyhow::anyhow!("Midi input not found: {}", name))?
+    } else if ports.is_empty() {
+        return Err(anyhow::anyhow!("Midi input not found"));
+    } else {
+        &ports[0]
+    };
+
     input.ignore(midir::Ignore::None);
-    Ok(input)
+    Ok((input, port.clone()))
 }
 
 fn setup_cpal_device() -> Result<cpal::Device> {
@@ -277,19 +301,18 @@ fn output<S>(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_synth<R: Rack + Send + 'static>(
     rack: R,
     rack_out: impl Fn(&R) -> f32 + Send + 'static,
     midi_in: midir::MidiInput,
+    midi_in_port: midir::MidiInputPort,
     mut midi_out: midir::MidiOutputConnection,
     device: cpal::Device,
     stream_config: cpal::StreamConfig,
     config: rustsynth::config::Config,
 ) -> Result<()> {
     let input = std::sync::Arc::new(std::sync::Mutex::new(R::new_input()));
-    let port = &midi_in.ports()[0];
-    let port_name = midi_in.port_name(port)?;
-    println!("Connect to {}", &port_name);
     let state_definition = {
         use rustsynth::input::Input;
         R::Input::new_state_definition()
@@ -300,10 +323,11 @@ fn run_synth<R: Rack + Send + 'static>(
     dbg!(&state_out);
     // setup_state_io(&mut state_in, &mut state_out)?;
     output(&state_out, &*input.lock().unwrap(), &mut midi_out)?;
+    let midi_in_port_name = midi_in.port_name(&midi_in_port)?;
     let _in_con = midi_in
         .connect(
-            port,
-            &port_name,
+            &midi_in_port,
+            &midi_in_port_name,
             {
                 let input = std::sync::Arc::clone(&input);
                 move |stamp, message, _| {
