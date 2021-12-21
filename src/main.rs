@@ -30,7 +30,6 @@ define_input! {
         lpf1_lfo1_amount: f32 = 0.0,
     }
 }
-
 define_rack! {
     Rack1: Rack<Rack1Input>(rack, input) {
         lfo1: VCO {
